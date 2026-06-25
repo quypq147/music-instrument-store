@@ -1,0 +1,16 @@
+{
+  "name": "music-instrument-store",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*",
+    "infrastructure"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:web": "npm run dev -w @music-store/web",
+    "lint": "npm run lint --workspaces --if-present"
+  }
+}

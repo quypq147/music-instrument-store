@@ -1,0 +1,18 @@
+{
+  "name": "@music-store/product-api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "echo \"product-api has no build step yet\"",
+    "test": "echo \"No tests configured for product-api\""
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1075.0",
+    "@aws-sdk/lib-dynamodb": "^3.1075.0",
+    "@music-store/shared-types": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152"
+  }
+}
