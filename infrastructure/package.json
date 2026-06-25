@@ -5,5 +5,10 @@
   "scripts": {
     "build": "echo \"infrastructure build not configured yet\"",
     "cdk": "cdk"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.260.0",
+    "constructs": "^10.6.0",
+    "source-map-support": "^0.5.21"
   }
 }
