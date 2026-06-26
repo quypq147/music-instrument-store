@@ -1,10 +1,43 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+
+interface CartItem {
+  id: number;
+  name: string;
+  price: string;
+  image: string;
+  quantity?: number;
+}
+
+interface Order {
+  id: string;
+  customer: {
+    name: string;
+    phone: string;
+    address: string;
+    note: string;
+  };
+  paymentMethod: string;
+  products: CartItem[];
+  totalItems: number;
+  totalPrice: number;
+  status: string;
+  createdAt: string;
+}
+
+const getStoredOrders = (): Order[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  return JSON.parse(localStorage.getItem("orders") || "[]") as Order[];
+};
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders] = useState<Order[]>(getStoredOrders);
   const [activeTab, setActiveTab] = useState("Chờ xác nhận");
 
   const tabs = [
@@ -14,13 +47,8 @@ export default function OrdersPage() {
     "Đánh giá",
   ];
 
-  useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("orders") || "[]");
-    setOrders(data);
-  }, []);
-
   const filteredOrders = orders.filter(
-    (order) => order.status === activeTab
+    (order: Order) => order.status === activeTab
   );
 
   return (
@@ -105,9 +133,14 @@ export default function OrdersPage() {
               </div>
 
               <div className="order-products">
-                {order.products.map((item: any, index: number) => (
+                {order.products.map((item: CartItem, index: number) => (
                   <div className="order-product" key={index}>
-                    <img src={item.image} alt={item.name} />
+                    <Image
+                      src={item.image}
+                      alt={item.name}
+                      width={96}
+                      height={96}
+                    />
 
                     <div>
                       <h3>{item.name}</h3>

@@ -1,34 +1,92 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+interface CartItem {
+  id: number;
+  name: string;
+  price: string;
+  image: string;
+  quantity?: number;
+}
+
+interface Customer {
+  name: string;
+  phone: string;
+  address: string;
+  note: string;
+}
+
+interface Order {
+  id: string;
+  customer: Customer;
+  paymentMethod: string;
+  products: CartItem[];
+  totalItems: number;
+  totalPrice: number;
+  status: string;
+  createdAt: string;
+}
+
+interface CartState {
+  cart: CartItem[];
+  selectedItems: number[];
+}
+
+const getStoredCart = (): CartItem[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  return JSON.parse(localStorage.getItem("cart") || "[]") as CartItem[];
+};
+
+const getInitialCartState = (): CartState => {
+  const cart = getStoredCart();
+
+  return {
+    cart,
+    selectedItems: cart.map((_, index: number) => index),
+  };
+};
+
+const createOrderTimestamp = () => ({
+  id: "DH" + Date.now(),
+  createdAt: new Date().toLocaleString("vi-VN"),
+});
 
 export default function Cart() {
-  const [cart, setCart] = useState<any[]>([]);
+  const router = useRouter();
+  const [{ cart, selectedItems }, setCartState] =
+    useState<CartState>(getInitialCartState);
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("COD");
-  const [selectedItems, setSelectedItems] = useState<number[]>([]);
 
-  const [customer, setCustomer] = useState({
+  const [customer, setCustomer] = useState<Customer>({
     name: "",
     phone: "",
     address: "",
     note: "",
   });
 
-  useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("cart") || "[]");
-    setCart(data);
-    setSelectedItems(data.map((_: any, index: number) => index));
-  }, []);
-
-  const saveCart = (newCart: any[]) => {
-    setCart(newCart);
+  const saveCart = (newCart: CartItem[]) => {
     localStorage.setItem("cart", JSON.stringify(newCart));
 
-    setSelectedItems((prev) =>
-      prev.filter((index) => index < newCart.length)
-    );
+    setCartState((prev) => ({
+      cart: newCart,
+      selectedItems: prev.selectedItems.filter((index) => index < newCart.length),
+    }));
+  };
+
+  const setSelectedItems = (updater: number[] | ((prev: number[]) => number[])) => {
+    setCartState((prev) => ({
+      cart: prev.cart,
+      selectedItems:
+        typeof updater === "function" ? updater(prev.selectedItems) : updater,
+    }));
   };
 
   const getPriceNumber = (price: string) => {
@@ -119,17 +177,18 @@ export default function Cart() {
       return;
     }
 
-    const oldOrders = JSON.parse(localStorage.getItem("orders") || "[]");
+    const oldOrders = JSON.parse(localStorage.getItem("orders") || "[]") as Order[];
+    const orderTimestamp = createOrderTimestamp();
 
-    const newOrder = {
-      id: "DH" + Date.now(),
+    const newOrder: Order = {
+      id: orderTimestamp.id,
       customer,
       paymentMethod,
       products: selectedCart,
       totalItems,
       totalPrice,
       status: "Chờ xác nhận",
-      createdAt: new Date().toLocaleString("vi-VN"),
+      createdAt: orderTimestamp.createdAt,
     };
 
     localStorage.setItem(
@@ -152,7 +211,7 @@ export default function Cart() {
       note: "",
     });
 
-    window.location.href = "/orders";
+    router.push("/orders");
   };
 
   return (
@@ -197,9 +256,11 @@ export default function Cart() {
                   onChange={() => toggleSelectItem(index)}
                 />
 
-                <img
+                <Image
                   src={item.image}
                   alt={item.name}
+                  width={120}
+                  height={120}
                   className="cart-item-img"
                 />
 

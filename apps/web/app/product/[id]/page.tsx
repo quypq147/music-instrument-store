@@ -1,11 +1,41 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useCart } from "@/app/context/CartContext";
 
-const products = [
+interface CartItem {
+  id: number;
+  name: string;
+  price: string;
+  image: string;
+  quantity?: number;
+}
+
+interface Product {
+  id: number;
+  name: string;
+  price: string;
+  image: string;
+  gallery: string[];
+  brand: string;
+  type: string;
+  origin: string;
+  warranty: string;
+  status: string;
+  description: string;
+  features: string[];
+  specs: Record<string, string>;
+}
+
+interface ProductDetailContentProps {
+  product: Product;
+  addToCart: (product: CartItem) => void;
+}
+
+const products: Product[] = [
   {
     id: 1,
     name: "Yamaha YAS-280",
@@ -672,19 +702,7 @@ export default function ProductDetail() {
   const params = useParams();
   const { addToCart } = useCart();
 
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [selectedImage, setSelectedImage] = useState("");
-
   const product = products.find((item) => item.id === Number(params?.id));
-
-  useEffect(() => {
-    if (product) {
-      setSelectedImage(product.image);
-      setActiveTab("overview");
-    }
-  }, [product]);
 
   if (!product) {
     return (
@@ -701,6 +719,24 @@ export default function ProductDetail() {
       </main>
     );
   }
+
+  return (
+    <ProductDetailContent
+      key={product.id}
+      product={product}
+      addToCart={addToCart}
+    />
+  );
+}
+
+function ProductDetailContent({
+  product,
+  addToCart,
+}: ProductDetailContentProps) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [selectedImage, setSelectedImage] = useState(product.image);
 
   const handleAddToCart = () => {
     setShowConfirm(true);
@@ -731,7 +767,12 @@ export default function ProductDetail() {
         <div className="yamaha-detail-layout">
           <div className="yamaha-left">
             <div className="yamaha-main-image">
-              <img src={selectedImage || product.image} alt={product.name} />
+              <Image
+                src={selectedImage || product.image}
+                alt={product.name}
+                width={640}
+                height={640}
+              />
             </div>
 
             <div className="yamaha-gallery">
@@ -745,7 +786,12 @@ export default function ProductDetail() {
                   }
                   onClick={() => setSelectedImage(img)}
                 >
-                  <img src={img} alt={`${product.name} ${index + 1}`} />
+                  <Image
+                    src={img}
+                    alt={`${product.name} ${index + 1}`}
+                    width={96}
+                    height={96}
+                  />
                 </button>
               ))}
             </div>
@@ -948,7 +994,12 @@ export default function ProductDetail() {
                 className="related-card"
                 key={item.id}
               >
-                <img src={item.image} alt={item.name} />
+                <Image
+                  src={item.image}
+                  alt={item.name}
+                  width={240}
+                  height={240}
+                />
                 <p className="related-brand">{item.brand}</p>
                 <h3>{item.name}</h3>
                 <p className="related-price">{item.price}</p>
