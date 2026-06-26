@@ -14,7 +14,7 @@ The project is designed for a 5-person team:
 
 ## Overview
 
-Music Instrument Store is an e-commerce project for selling saxophones and accessories. The working application is a Next.js web app in `apps/web` with product browsing, search and filtering, product details, cart flow, order pages, admin page, login and register pages, and an AI chat endpoint.
+Music Instrument Store is an e-commerce project for selling saxophones and accessories. The working application is a Next.js web app in `frontend` with product browsing, search and filtering, product details, cart flow, order pages, admin page, login and register pages, and an AI chat endpoint.
 
 The repository also includes backend and infrastructure folders for the target serverless architecture:
 
@@ -45,7 +45,7 @@ The repository also includes backend and infrastructure folders for the target s
 - Payment webhook Lambda: Stripe checkout completion handler that publishes `PaymentSucceeded` events to EventBridge.
 - Infrastructure: partial AWS CDK skeleton under `infrastructure`.
 - Backend services: Node.js Lambda service packages under `services`.
-- App location: `apps/web`.
+- App location: `frontend`.
 
 ## Repository Structure
 
@@ -53,8 +53,7 @@ The repository also includes backend and infrastructure folders for the target s
 music-instrument-store/
 |-- package.json                     # npm workspace root
 |-- package-lock.json                # workspace lockfile
-|-- apps/
-|   `-- web/                         # Next.js web app
+|-- frontend/                        # Next.js frontend app
 |       |-- app/                     # App Router pages, API routes, components, context
 |       |-- public/                  # Product images and static assets
 |       |-- package.json
@@ -110,7 +109,7 @@ OPENAI_API_KEY=your_openai_api_key
 Save it as:
 
 ```text
-apps/web/.env.local
+frontend/.env.local
 ```
 
 If AWS, Cognito, or Stripe features are enabled, add the related environment variables:
@@ -144,7 +143,7 @@ npm run build
 npm run lint
 ```
 
-Run from `apps/web` when working only on the frontend:
+Run from `frontend` when working only on the frontend:
 
 ```bash
 npm run dev

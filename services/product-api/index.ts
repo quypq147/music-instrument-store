@@ -2,9 +2,23 @@ import type { APIGatewayProxyHandler, APIGatewayProxyResult } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
-  QueryCommand,
+  GetCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
+
+type ProductItem = {
+  PK?: string;
+  SK?: string;
+  id: string;
+  name: string;
+  brand: string;
+  type?: string;
+  price: number;
+  imageUrl: string;
+  description: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
@@ -15,11 +29,18 @@ const jsonResponse = (
 ): APIGatewayProxyResult => ({
   statusCode,
   headers: {
-    "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Content-Type": "application/json",
   },
   body: JSON.stringify(body),
 });
+
+const stripTableKeys = (item: ProductItem) => {
+  const { PK, SK, createdAt, updatedAt, ...product } = item;
+
+  return product;
+};
 
 const getProductId = (path?: string, pathId?: string): string | undefined => {
   if (pathId) {
@@ -27,6 +48,7 @@ const getProductId = (path?: string, pathId?: string): string | undefined => {
   }
 
   const match = path?.match(/^\/products\/([^/]+)$/);
+
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 };
 
@@ -42,42 +64,44 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const productId = getProductId(event.path, event.pathParameters?.id);
 
-    if (event.resource === "/products" || event.path === "/products") {
-      const result = await dynamoDb.send(
-        new ScanCommand({
-          TableName: tableName,
-          FilterExpression: "begins_with(pk, :productPrefix)",
-          ExpressionAttributeValues: {
-            ":productPrefix": "PRODUCT#",
-          },
-        })
-      );
-
-      return jsonResponse(200, { products: result.Items ?? [] });
-    }
-
     if (productId) {
       const result = await dynamoDb.send(
-        new QueryCommand({
+        new GetCommand({
           TableName: tableName,
-          KeyConditionExpression: "pk = :pk",
-          ExpressionAttributeValues: {
-            ":pk": `PRODUCT#${productId}`,
+          Key: {
+            PK: `PRODUCT#${productId}`,
+            SK: "METADATA",
           },
-          Limit: 1,
         })
       );
 
-      const product = result.Items?.[0];
-
-      if (!product) {
+      if (!result.Item) {
         return jsonResponse(404, { message: "Product not found" });
       }
 
-      return jsonResponse(200, { product });
+      return jsonResponse(200, {
+        product: stripTableKeys(result.Item as ProductItem),
+      });
     }
 
-    return jsonResponse(404, { message: "Route not found" });
+    const result = await dynamoDb.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "begins_with(#pk, :productPrefix)",
+        ExpressionAttributeNames: {
+          "#pk": "PK",
+        },
+        ExpressionAttributeValues: {
+          ":productPrefix": "PRODUCT#",
+        },
+      })
+    );
+
+    const products = (result.Items ?? [])
+      .map((item) => stripTableKeys(item as ProductItem))
+      .sort((a, b) => Number(a.id) - Number(b.id));
+
+    return jsonResponse(200, products);
   } catch (error) {
     console.error("Product API handler failed", {
       error,

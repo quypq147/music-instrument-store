@@ -4,6 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 import { SecurityStack } from '../lib/security-stack';
 import { DatabaseStack } from '../lib/database-stack';
 import { AuthStack } from '../lib/auth-stack';
+import { BackendStack } from '../lib/backend-stack';
 
 const app = new cdk.App();
 
@@ -13,7 +14,11 @@ const envName = app.node.tryGetContext('env') || 'dev';
 // Khởi tạo các Stacks
 new SecurityStack(app, `MusicStoreSecurityStack-${envName}`);
 
-new DatabaseStack(app, `MusicStoreDatabaseStack-${envName}`);
+const databaseStack = new DatabaseStack(app, `MusicStoreDatabaseStack-${envName}`);
+
+new BackendStack(app, `MusicStoreBackendStack-${envName}`, {
+  productsTable: databaseStack.mainTable,
+});
 
 new AuthStack(app, `MusicStoreAuthStack-${envName}`);
 

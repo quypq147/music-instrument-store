@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "apps/*",
+    "frontend",
     "packages/*",
     "services/*",
     "infrastructure"
@@ -11,6 +11,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev:web": "npm run dev -w @music-store/web",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "seed:products": "node scripts/import-products-to-dynamodb.mjs"
   }
 }

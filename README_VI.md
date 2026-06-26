@@ -14,7 +14,7 @@ Nhóm gồm 5 thành viên:
 
 ## Tổng Quan
 
-Music Instrument Store là dự án thương mại điện tử bán saxophone và phụ kiện. Ứng dụng hiện tại là web app Next.js trong `apps/web`, gồm các chức năng xem sản phẩm, tìm kiếm và lọc sản phẩm, trang chi tiết sản phẩm, giỏ hàng, đơn hàng, trang quản trị, đăng nhập, đăng ký và API chatbot AI.
+Music Instrument Store là dự án thương mại điện tử bán saxophone và phụ kiện. Ứng dụng hiện tại là web app Next.js trong `frontend`, gồm các chức năng xem sản phẩm, tìm kiếm và lọc sản phẩm, trang chi tiết sản phẩm, giỏ hàng, đơn hàng, trang quản trị, đăng nhập, đăng ký và API chatbot AI.
 
 Repository cũng có các thư mục ban đầu cho backend và infrastructure mục tiêu:
 
@@ -40,14 +40,13 @@ Repository cũng có các thư mục ban đầu cho backend và infrastructure m
 - API chatbot: Next.js route handler dùng OpenAI API.
 - Infrastructure: bộ khung AWS CDK một phần trong `infrastructure`.
 - Backend services: các thư mục placeholder trong `services`.
-- Vị trí ứng dụng: `apps/web`.
+- Vị trí ứng dụng: `frontend`.
 ảnh 
 ## Cấu Trúc Repository
 
 ```text
 music-instrument-store/
-|-- apps/
-|   `-- web/                         # Next.js web app
+|-- frontend/                        # Next.js frontend app
 |       |-- app/                     # App Router pages, API routes, components, context
 |       |-- public/                  # Static assets
 |       |-- package.json
@@ -84,7 +83,7 @@ git checkout dev
 Cài dependencies:
 
 ```bash
-cd apps/web
+cd frontend
 npm install
 ```
 
@@ -97,7 +96,7 @@ OPENAI_API_KEY=your_openai_api_key
 Lưu tại:
 
 ```text
-apps/web/.env.local
+frontend/.env.local
 ```
 
 Nếu dùng AWS, Cognito hoặc Stripe, thêm các biến môi trường tương ứng:
@@ -123,7 +122,7 @@ http://localhost:3000
 
 ## Scripts
 
-Chạy trong thư mục `apps/web`:
+Chạy trong thư mục `frontend`:
 
 ```bash
 npm run dev
