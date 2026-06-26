@@ -115,15 +115,22 @@ export default function Cart() {
 
   const increaseQuantity = (index: number) => {
     const newCart = [...cart];
-    newCart[index].quantity = (newCart[index].quantity || 1) + 1;
+    const item = newCart[index];
+
+    if (!item) return;
+
+    item.quantity = (item.quantity ?? 1) + 1;
     saveCart(newCart);
   };
 
   const decreaseQuantity = (index: number) => {
     const newCart = [...cart];
+    const item = newCart[index];
 
-    if ((newCart[index].quantity || 1) > 1) {
-      newCart[index].quantity -= 1;
+    if (!item) return;
+
+    if ((item.quantity ?? 1) > 1) {
+      item.quantity = (item.quantity ?? 1) - 1;
     } else {
       const ok = confirm("Bạn có muốn xóa sản phẩm này khỏi giỏ hàng không?");
       if (!ok) return;
