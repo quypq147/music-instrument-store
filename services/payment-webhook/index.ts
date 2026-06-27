@@ -1,4 +1,5 @@
 import type { APIGatewayProxyHandler, APIGatewayProxyResult } from "aws-lambda";
+import { createHmac, timingSafeEqual } from "crypto";
 import {
   EventBridgeClient,
   PutEventsCommand,
@@ -7,6 +8,7 @@ import {
 const eventBridge = new EventBridgeClient({});
 const eventBusName = process.env.EVENT_BUS_NAME;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const stripeSignatureToleranceSeconds = 300;
 
 const jsonResponse = (
   statusCode: number,
@@ -19,6 +21,69 @@ const jsonResponse = (
   },
   body: JSON.stringify(body),
 });
+
+const getRawBody = (body: string, isBase64Encoded: boolean | undefined) =>
+  isBase64Encoded ? Buffer.from(body, "base64").toString("utf8") : body;
+
+const parseStripeSignatureHeader = (header: string) =>
+  header.split(",").reduce(
+    (parts, segment) => {
+      const [key, ...valueParts] = segment.split("=");
+      const value = valueParts.join("=");
+
+      if (key === "t") {
+        parts.timestamp = value;
+      }
+
+      if (key === "v1" && value) {
+        parts.signatures.push(value);
+      }
+
+      return parts;
+    },
+    { timestamp: undefined as string | undefined, signatures: [] as string[] }
+  );
+
+const safeHexEqual = (expectedHex: string, actualHex: string) => {
+  const expected = Buffer.from(expectedHex, "hex");
+  const actual = Buffer.from(actualHex, "hex");
+
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+};
+
+const verifyStripeSignature = (
+  rawBody: string,
+  signatureHeader: string,
+  webhookSecret: string
+) => {
+  const { timestamp, signatures } =
+    parseStripeSignatureHeader(signatureHeader);
+
+  if (!timestamp || signatures.length === 0) {
+    return false;
+  }
+
+  const timestampSeconds = Number(timestamp);
+
+  if (!Number.isFinite(timestampSeconds)) {
+    return false;
+  }
+
+  const ageSeconds = Math.abs(Date.now() / 1000 - timestampSeconds);
+
+  if (ageSeconds > stripeSignatureToleranceSeconds) {
+    return false;
+  }
+
+  const signedPayload = `${timestamp}.${rawBody}`;
+  const expectedSignature = createHmac("sha256", webhookSecret)
+    .update(signedPayload, "utf8")
+    .digest("hex");
+
+  return signatures.some((signature) =>
+    safeHexEqual(expectedSignature, signature)
+  );
+};
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
@@ -50,11 +115,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       return jsonResponse(400, { message: "Missing webhook body" });
     }
 
-    const payload = JSON.parse(
-      event.isBase64Encoded
-        ? Buffer.from(event.body, "base64").toString("utf8")
-        : event.body
-    );
+    const rawBody = getRawBody(event.body, event.isBase64Encoded);
+
+    if (!verifyStripeSignature(rawBody, signature, stripeWebhookSecret)) {
+      return jsonResponse(400, { message: "Invalid Stripe signature" });
+    }
+
+    const payload = JSON.parse(rawBody);
 
     if (payload.type !== "checkout.session.completed") {
       return jsonResponse(200, { received: true, ignored: true });

@@ -12,6 +12,11 @@
     "build": "npm run build --workspaces --if-present",
     "dev:web": "npm run dev -w @music-store/web",
     "lint": "npm run lint --workspaces --if-present",
-    "seed:products": "node scripts/import-products-to-dynamodb.mjs"
+    "seed:products": "npx ts-node scripts/seed-products.ts",
+    "setup:local": "cd infrastructure && npx cdk deploy --all --outputs-file ../frontend/cdk-outputs.json && cd ../frontend && npx ts-node generate-env.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1075.0",
+    "@aws-sdk/lib-dynamodb": "^3.1075.0"
   }
 }
