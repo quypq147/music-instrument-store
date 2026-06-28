@@ -10,10 +10,11 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:lambdas": "npx esbuild services/product-api/index.ts --bundle --platform=node --target=node18 --external:@aws-sdk/* --outfile=services/product-api/index.js && npx esbuild services/order-api/index.ts --bundle --platform=node --target=node18 --external:@aws-sdk/* --outfile=services/order-api/index.js",
     "dev:web": "npm run dev -w @music-store/web",
     "lint": "npm run lint --workspaces --if-present",
     "seed:products": "npx ts-node scripts/seed-products.ts",
-    "setup:local": "cd infrastructure && npx cdk deploy --all --require-approval never --outputs-file ../frontend/cdk-outputs.json && cd ../frontend && npx ts-node generate-env.ts"
+    "setup:local": "npm run build:lambdas && cd infrastructure && npx cdk deploy --all --require-approval never --outputs-file ../frontend/cdk-outputs.json && cd ../frontend && npx ts-node generate-env.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1075.0",
