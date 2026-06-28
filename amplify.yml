@@ -8,7 +8,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - cd ../..
+            - cd ..
             - npm ci
         build:
           commands:
