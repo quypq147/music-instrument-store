@@ -154,7 +154,7 @@ export default function Register() {
             value={confirmationCode}
             onChange={(e) => setConfirmationCode(e.target.value)}
             disabled={isSubmitting}
-            className="text-center font-bold tracking-widest text-lg"
+            style={{ textAlign: "center", fontWeight: "bold", letterSpacing: "0.2em", fontSize: "18px" }}
           />
 
           <button type="submit" disabled={isSubmitting}>
@@ -163,7 +163,8 @@ export default function Register() {
 
           <button
             type="button"
-            className="back-btn mt-2 bg-slate-200 text-slate-700 w-full py-2.5 rounded-lg hover:bg-slate-300 font-bold transition"
+            className="back-btn"
+            style={{ marginTop: "10px", width: "100%", backgroundColor: "transparent", color: "var(--color-primary)", border: "1px solid var(--color-primary)", padding: "14px", fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em" }}
             onClick={() => setStep("REGISTER")}
             disabled={isSubmitting}
           >

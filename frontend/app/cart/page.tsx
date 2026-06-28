@@ -1,35 +1,13 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-interface CartItem {
-  id: number;
-  name: string;
-  price: string;
-  image: string;
-  quantity?: number;
-}
-
-interface Customer {
-  name: string;
-  phone: string;
-  address: string;
-  note: string;
-}
-
-interface Order {
-  id: string;
-  customer: Customer;
-  paymentMethod: string;
-  products: CartItem[];
-  totalItems: number;
-  totalPrice: number;
-  status: string;
-  createdAt: string;
-}
+import type { CartItem, Customer, Order } from "../../types/cart";
+import { CartItemCard } from "../components/CartItemCard";
+import { CartSummary } from "../components/CartSummary";
+import { CheckoutModal } from "../components/CheckoutModal";
 
 interface CartState {
   cart: CartItem[];
@@ -89,6 +67,7 @@ export default function Cart() {
         typeof updater === "function" ? updater(prev.selectedItems) : updater,
     }));
   };
+
   const getPriceNumber = (price: string) =>
     Number(String(price).replace(/[^\d]/g, ""));
 
@@ -289,218 +268,45 @@ export default function Cart() {
             </div>
 
             {cart.map((item, index) => (
-              <div className="cart-item-card" key={index}>
-                <input
-                  type="checkbox"
-                  className="cart-checkbox"
-                  checked={selectedItems.includes(index)}
-                  onChange={() => toggleSelectItem(index)}
-                />
-
-                <Image
-                  src={item.image}
-                  alt={item.name}
-                  width={120}
-                  height={120}
-                  className="cart-item-img"
-                />
-
-                <div className="cart-item-info">
-                  <h3>{item.name}</h3>
-                  <p className="cart-item-brand">
-                    Chính hãng • Bảo hành uy tín
-                  </p>
-                  <p className="cart-item-price">{item.price}</p>
-
-                  <div className="quantity-box">
-                    <button onClick={() => decreaseQuantity(index)}>
-                      -
-                    </button>
-                    <span>{item.quantity || 1}</span>
-                    <button onClick={() => increaseQuantity(index)}>
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                <div className="cart-item-total">
-                  <p>
-                    {(
-                      getPriceNumber(item.price) *
-                      (item.quantity || 1)
-                    ).toLocaleString("vi-VN")}
-                    đ
-                  </p>
-
-                  <button
-                    className="delete-btn"
-                    onClick={() => removeItem(index)}
-                  >
-                    Xóa
-                  </button>
-                </div>
-              </div>
+              <CartItemCard
+                key={index}
+                item={item}
+                index={index}
+                isSelected={selectedItems.includes(index)}
+                onToggleSelect={toggleSelectItem}
+                onIncrease={increaseQuantity}
+                onDecrease={decreaseQuantity}
+                onRemove={removeItem}
+              />
             ))}
           </section>
 
-          <aside className="cart-summary-box">
-            <h2>Thông tin đơn hàng</h2>
-
-            <div className="summary-row">
-              <span>Sản phẩm đã chọn</span>
-              <strong>{totalItems}</strong>
-            </div>
-
-            <div className="summary-row">
-              <span>Tạm tính</span>
-              <strong>{totalPrice.toLocaleString("vi-VN")}đ</strong>
-            </div>
-
-            <div className="summary-row">
-              <span>Phí vận chuyển</span>
-              <strong>Miễn phí</strong>
-            </div>
-
-            <div className="summary-total">
-              <span>Tổng tiền</span>
-              <strong>{totalPrice.toLocaleString("vi-VN")}đ</strong>
-            </div>
-
-            <button
-              className="order-btn"
-              onClick={() => {
-                if (selectedItems.length === 0) {
-                  alert("Vui lòng chọn sản phẩm cần thanh toán");
-                  return;
-                }
-                setShowCheckout(true);
-              }}
-            >
-              Đặt Hàng
-            </button>
-
-            <Link href="/products">
-              <button className="continue-shopping-btn">
-                Tiếp tục mua hàng
-              </button>
-            </Link>
-
-            <button className="clear-cart-btn" onClick={clearCart}>
-              Xóa toàn bộ giỏ hàng
-            </button>
-          </aside>
+          <CartSummary
+            totalItems={totalItems}
+            totalPrice={totalPrice}
+            onOrderClick={() => {
+              if (selectedItems.length === 0) {
+                alert("Vui lòng chọn sản phẩm cần thanh toán");
+                return;
+              }
+              setShowCheckout(true);
+            }}
+            onClearCartClick={clearCart}
+          />
         </div>
       )}
 
       {showCheckout && (
-        <div className="checkout-overlay">
-          <div className="checkout-box">
-            <h2>Thông tin đặt hàng</h2>
-
-            <input
-              type="text"
-              placeholder="Họ và tên"
-              value={customer.name}
-              onChange={(e) =>
-                setCustomer({
-                  ...customer,
-                  name: e.target.value,
-                })
-              }
-            />
-
-            <input
-              type="text"
-              placeholder="Số điện thoại"
-              value={customer.phone}
-              onChange={(e) =>
-                setCustomer({
-                  ...customer,
-                  phone: e.target.value,
-                })
-              }
-            />
-
-            <input
-              type="text"
-              placeholder="Địa chỉ nhận hàng"
-              value={customer.address}
-              onChange={(e) =>
-                setCustomer({
-                  ...customer,
-                  address: e.target.value,
-                })
-              }
-            />
-
-            <textarea
-              placeholder="Ghi chú thêm"
-              value={customer.note}
-              onChange={(e) =>
-                setCustomer({
-                  ...customer,
-                  note: e.target.value,
-                })
-              }
-            />
-
-            <div className="payment-box">
-              <h3>Phương thức thanh toán</h3>
-
-              <label className="payment-option">
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={paymentMethod === "COD"}
-                  onChange={() => setPaymentMethod("COD")}
-                />
-                <span>💵 Thanh toán khi nhận hàng (COD)</span>
-              </label>
-
-              <label className="payment-option">
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={paymentMethod === "Momo"}
-                  onChange={() => setPaymentMethod("Momo")}
-                />
-                <span>🟣 Ví Momo</span>
-              </label>
-
-              <label className="payment-option">
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={paymentMethod === "VNPay"}
-                  onChange={() => setPaymentMethod("VNPay")}
-                />
-                <span>🔵 VNPay / Ngân hàng</span>
-              </label>
-            </div>
-
-            <div className="checkout-total-box">
-              <span>Tổng thanh toán</span>
-              <strong>{totalPrice.toLocaleString("vi-VN")}đ</strong>
-            </div>
-
-            <div className="checkout-actions">
-              <button
-                className="confirm-order-btn"
-                onClick={confirmOrder}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Đang gửi..." : "Xác nhận đặt hàng"}
-              </button>
-
-              <button
-                className="cancel-order-btn"
-                onClick={() => setShowCheckout(false)}
-              >
-                Hủy
-              </button>
-            </div>
-          </div>
-        </div>
+        <CheckoutModal
+          customer={customer}
+          onChangeCustomer={setCustomer}
+          paymentMethod={paymentMethod}
+          onChangePaymentMethod={setPaymentMethod}
+          totalPrice={totalPrice}
+          isSubmitting={isSubmitting}
+          onConfirm={confirmOrder}
+          onClose={() => setShowCheckout(false)}
+        />
       )}
     </main>
   );

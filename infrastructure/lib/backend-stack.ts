@@ -2,10 +2,12 @@ import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as cognito from "aws-cdk-lib/aws-cognito";
 import { Construct } from "constructs";
 
 interface BackendProps extends cdk.StackProps {
   productsTable: dynamodb.Table;
+  userPool?: cognito.IUserPool;
 }
 
 export class BackendStack extends cdk.Stack {
@@ -37,10 +39,18 @@ export class BackendStack extends cdk.Stack {
       restApiName: "Music Store API",
       defaultCorsPreflightOptions: {
         allowHeaders: ["Content-Type", "Authorization"],
-        allowMethods: ["OPTIONS", "GET", "POST"],
+        allowMethods: ["OPTIONS", "GET", "POST", "PUT", "DELETE"],
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
       },
     });
+
+    // Create Cognito Authorizer if userPool is provided
+    let authorizer: apigateway.CognitoUserPoolsAuthorizer | undefined;
+    if (props.userPool) {
+      authorizer = new apigateway.CognitoUserPoolsAuthorizer(this, "ECommerceApiAuthorizer", {
+        cognitoUserPools: [props.userPool],
+      });
+    }
 
     const productsResource = api.root.addResource("products");
     productsResource.addMethod(
@@ -49,7 +59,11 @@ export class BackendStack extends cdk.Stack {
     );
     productsResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(productApiLambda)
+      new apigateway.LambdaIntegration(productApiLambda),
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
     );
 
     const productResource = productsResource.addResource("{id}");
@@ -59,11 +73,19 @@ export class BackendStack extends cdk.Stack {
     );
     productResource.addMethod(
       "PUT",
-      new apigateway.LambdaIntegration(productApiLambda)
+      new apigateway.LambdaIntegration(productApiLambda),
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
     );
     productResource.addMethod(
       "DELETE",
-      new apigateway.LambdaIntegration(productApiLambda)
+      new apigateway.LambdaIntegration(productApiLambda),
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
     );
 
     const ordersResource = api.root.addResource("orders");

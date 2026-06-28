@@ -77,52 +77,46 @@ export default function ChatWidget() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <>
       {isOpen ? (
-        <div className="w-80 h-96 bg-white border border-gray-200 rounded-lg shadow-2xl flex flex-col">
+        <div className="chat-box">
           {/* Header */}
-          <div className="bg-slate-900 text-white p-3 flex justify-between items-center rounded-t-lg">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🤖</span>
-              <h3 className="font-bold text-sm">Trợ lý Music Store</h3>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="text-white hover:text-gray-300">
-              ✕
-            </button>
+          <div className="chat-header">
+            <strong>Trợ lý Music Store</strong>
+            <button type="button" onClick={() => setIsOpen(false)}>✕</button>
           </div>
           
           {/* Chat Body */}
-          <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-3 bg-gray-50">
+          <div className="chat-body">
             {messages.map((msg, index) => (
               <div 
                 key={index} 
-                className={`max-w-[80%] p-2.5 rounded-lg text-sm ${
-                  msg.sender === "user" 
-                    ? "bg-slate-900 self-end text-white rounded-br-none" 
-                    : "bg-white border self-start text-gray-800 rounded-bl-none shadow-sm"
-                }`}
+                className={msg.sender === "user" ? "user-msg" : "bot-msg"}
               >
                 {msg.text}
               </div>
             ))}
-            {isLoading && <div className="text-gray-400 text-xs self-start italic">Bot đang gõ...</div>}
+            {isLoading && (
+              <div className="bot-msg" style={{ fontStyle: "italic", opacity: 0.7 }}>
+                Bot đang gõ...
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
           {/* Input Area */}
-          <div className="p-3 border-t bg-white rounded-b-lg flex gap-2">
+          <div className="chat-input">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               placeholder="Nhập yêu cầu..."
-              className="flex-1 border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-slate-900 text-black"
             />
             <button 
+              type="button"
               onClick={sendMessage} 
               disabled={isLoading}
-              className="bg-slate-900 text-white px-4 py-1.5 rounded-md hover:bg-slate-800 transition disabled:opacity-50 text-sm font-medium"
             >
               Gửi
             </button>
@@ -130,12 +124,13 @@ export default function ChatWidget() {
         </div>
       ) : (
         <button 
+          type="button"
           onClick={() => setIsOpen(true)}
-          className="bg-slate-900 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105"
+          className="chat-floating-btn"
         >
-          <span className="text-2xl">💬</span>
+          💬
         </button>
       )}
-    </div>
+    </>
   );
 }

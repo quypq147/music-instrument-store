@@ -16,10 +16,11 @@ new SecurityStack(app, `MusicStoreSecurityStack-${envName}`);
 
 const databaseStack = new DatabaseStack(app, `MusicStoreDatabaseStack-${envName}`);
 
+const authStack = new AuthStack(app, `MusicStoreAuthStack-${envName}`);
+
 new BackendStack(app, `MusicStoreBackendStack-${envName}`, {
   productsTable: databaseStack.mainTable,
+  userPool: authStack.userPool,
 });
-
-new AuthStack(app, `MusicStoreAuthStack-${envName}`);
 
 app.synth();

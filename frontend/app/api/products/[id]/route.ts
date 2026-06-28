@@ -65,11 +65,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const body = await req.json();
     const targetUrl = `${apiGatewayUrl}/products/${encodeURIComponent(id)}`;
 
+    const authHeader = req.headers.get("Authorization");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
     const res = await fetch(targetUrl, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
@@ -111,11 +117,17 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const { id } = await params;
     const targetUrl = `${apiGatewayUrl}/products/${encodeURIComponent(id)}`;
 
+    const authHeader = req.headers.get("Authorization");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
     const res = await fetch(targetUrl, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
     });
 
     if (res.status === 404) {

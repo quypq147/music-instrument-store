@@ -2,14 +2,21 @@ import "./globals.css";
 import { CartProvider } from "./context/CartContext";
 import CartButton from "./components/CartButton";
 import ChatWidget from "./components/ChatWidget";
-import { Poppins } from "next/font/google";
+import { Playfair_Display, Inter } from "next/font/google";
 import Link from "next/link";
 import AmplifyConfig from "./components/AmplifyConfig";
 import AuthNav from "./components/AuthNav";
 
-const poppins = Poppins({
+const playfair = Playfair_Display({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  variable: "--font-serif",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
 });
 
 export const metadata = {
@@ -24,34 +31,32 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body className={poppins.className}>
+      <body className={`${inter.variable} ${playfair.variable}`}>
         <AmplifyConfig>
           <CartProvider>
-          <header className="header">
+          <header className="header-unified">
             <Link href="/" className="logo">
-              <h1>Nhóm TTTN Music</h1>
-              <p>Website bán nhạc cụ & Saxophone</p>
+              <h1>Aureate Forest</h1>
+              <p>Boutique</p>
             </Link>
 
-            <form action="/products" className="search">
-              <input
-                type="text"
-                name="q"
-                placeholder="Tìm kiếm sản phẩm..."
-              />
-            </form>
+            <nav className="nav-links">
+              <Link href="/">Trang Chủ</Link>
+              <Link href="/products">Sản Phẩm</Link>
+            </nav>
 
-            <CartButton />
+            <div className="header-right">
+              <form action="/products" className="search-box-minimal">
+                <input
+                  type="text"
+                  name="q"
+                  placeholder="Tìm kiếm sản phẩm..."
+                />
+              </form>
+              <AuthNav />
+              <CartButton />
+            </div>
           </header>
-
-          <nav className="menu">
-            <Link href="/">Trang Chủ</Link>
-            <Link href="/products">Sản Phẩm</Link>
-            <Link href="/cart">Giỏ Hàng</Link>
-            <Link href="/orders">Đơn Đã Mua</Link>
-            <AuthNav />
-            <Link href="/admin">Admin</Link>
-          </nav>
 
           {children}
 

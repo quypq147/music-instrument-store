@@ -50,13 +50,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const authHeader = req.headers.get("Authorization");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
     const body = await req.json();
 
     const res = await fetch(`${apiGatewayUrl}/products`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
