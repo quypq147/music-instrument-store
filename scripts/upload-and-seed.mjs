@@ -87,7 +87,7 @@ async function run() {
       const filePath = path.join(imagesDir, file);
       const s3Path = `s3://${s3BucketName}/logos/${file}`;
       console.log(`Uploading ${file} -> ${s3Path}`);
-      execSync(`aws s3 cp "${filePath}" "${s3Path}"`, { stdio: "inherit" });
+      execSync(`aws s3 cp "${filePath}" "${s3Path}" --sse AES256`, { stdio: "inherit" });
     }
   }
 
@@ -120,7 +120,7 @@ async function run() {
       if (!uploadedFiles.has(filename)) {
         const s3Path = `s3://${s3BucketName}/products/${filename}`;
         console.log(`Uploading product image: ${filename} -> ${s3Path}`);
-        execSync(`aws s3 cp "${localPath}" "${s3Path}"`, { stdio: "inherit" });
+        execSync(`aws s3 cp "${localPath}" "${s3Path}" --sse AES256`, { stdio: "inherit" });
         uploadedFiles.add(filename);
       }
     } else {
@@ -137,7 +137,7 @@ async function run() {
         const relatedLocalPath = path.join(imagesDir, relatedFile);
         const s3Path = `s3://${s3BucketName}/products/${relatedFile}`;
         console.log(`Uploading related product image: ${relatedFile} -> ${s3Path}`);
-        execSync(`aws s3 cp "${relatedLocalPath}" "${s3Path}"`, { stdio: "inherit" });
+        execSync(`aws s3 cp "${relatedLocalPath}" "${s3Path}" --sse AES256`, { stdio: "inherit" });
         uploadedFiles.add(relatedFile);
       }
     }

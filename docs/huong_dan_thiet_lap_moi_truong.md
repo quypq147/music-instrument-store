@@ -87,10 +87,23 @@ Dưới đây là mô tả các biến môi trường được khai báo trong [
 | `AWS_REGION` | Khu vực deploy AWS Cloud | Cấu hình thủ công |
 | `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY` | Quyền truy cập SDK của AWS (dành cho Lex Bot) | IAM User có quyền gọi Lex |
 | `LEX_BOT_ID` & `LEX_BOT_ALIAS_ID` | Thông tin Lex Bot dùng cho Chatbot AI | Lấy từ Lex Console |
+| `S3_BUCKET_NAME` | Tên S3 Bucket dùng chứa ảnh sản phẩm và logo | Tự tạo thủ công hoặc lấy từ CDK Assets |
 
 ---
 
-## 5. Khởi Chạy Project Cục Bộ
+## 5. Seed Dữ Liệu (S3 & DynamoDB)
+
+Để hệ thống hiển thị đầy đủ hình ảnh sản phẩm được lưu trên Cloud, bạn cần thực hiện upload ảnh lên S3 và seed dữ liệu vào DynamoDB:
+
+1. Đảm bảo đã khai báo `S3_BUCKET_NAME` trong file `frontend/.env.local`.
+2. Chạy lệnh tự động hóa việc upload các ảnh sản phẩm/logo lên S3 (sử dụng SSE-S3 để cho phép đọc công khai) và nạp thông tin sản phẩm vào bảng DynamoDB:
+   ```bash
+   npm run seed:s3-products
+   ```
+
+---
+
+## 6. Khởi Chạy Project Cục Bộ
 
 Sau khi đã hoàn thành cài đặt thư viện và cấu hình biến môi trường:
 
@@ -102,7 +115,7 @@ npm run dev:web
 
 ---
 
-## 6. Quy Tắc Tránh Lỗi Môi Trường Trong Nhóm
+## 7. Quy Tắc Tránh Lỗi Môi Trường Trong Nhóm
 
 1.  **Không bao giờ commit file nhạy cảm**:
     *   Các file như `.env.local` và `cdk-outputs.json` chứa thông tin nhạy cảm và thông số cá nhân, đã được liệt kê trong file [`.gitignore`](file:///E:/Project/repo/music-instrument-store/.gitignore) để tránh đẩy lên GitHub.
