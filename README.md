@@ -1,3 +1,5 @@
+[ENG](/README.md) [VN](/README_VI.md)
+
 # Music Instrument Store - AWS Serverless Platform
 
 An e-commerce platform for musical instruments built with **Next.js** and a target **AWS Serverless** architecture. The system is designed for scalability, secure Stripe payments, event-driven processing, observability, and an integrated AI chatbot.
