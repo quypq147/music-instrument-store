@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as backup from 'aws-cdk-lib/aws-backup';
+import * as events from 'aws-cdk-lib/aws-events';
 
 export class DatabaseStack extends cdk.Stack {
   public readonly mainTable: dynamodb.Table;
@@ -16,6 +18,7 @@ export class DatabaseStack extends cdk.Stack {
       sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // Tối ưu chi phí serverless
       removalPolicy: cdk.RemovalPolicy.DESTROY, // Xóa table khi destroy stack (chỉ dùng cho Dev)
+      pointInTimeRecovery: true, // Kích hoạt Point-in-Time Recovery (PITR) cho DynamoDB
     });
 
     // Khởi tạo S3 Bucket lưu trữ hình ảnh sản phẩm
@@ -42,6 +45,41 @@ export class DatabaseStack extends cdk.Stack {
       ],
     });
 
+    // Khởi tạo AWS Backup Vault để lưu trữ các bản sao lưu
+    const backupVault = new backup.BackupVault(this, 'MusicStoreBackupVault', {
+      backupVaultName: 'MusicStoreBackupVault',
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // Đổi thành RETAIN khi lên production thực tế
+    });
+
+    // Định nghĩa Kế hoạch sao lưu (Backup Plan)
+    const backupPlan = new backup.BackupPlan(this, 'MusicStoreBackupPlan', {
+      backupPlanName: 'MusicStoreBackupPlan',
+    });
+
+    // Quy tắc sao lưu hàng ngày (daily) - giữ lại trong 30 ngày
+    backupPlan.addRule(new backup.BackupPlanRule({
+      ruleName: 'DailyBackup',
+      backupVault: backupVault,
+      scheduleExpression: events.Schedule.expression('cron(0 0 * * ? *)'), // Chạy mỗi ngày lúc 00:00 UTC
+      deleteAfter: cdk.Duration.days(30),
+    }));
+
+    // Quy tắc sao lưu hàng tuần (weekly) - giữ lại trong 90 ngày
+    backupPlan.addRule(new backup.BackupPlanRule({
+      ruleName: 'WeeklyBackup',
+      backupVault: backupVault,
+      scheduleExpression: events.Schedule.expression('cron(0 0 ? * SUN *)'), // Chạy mỗi Chủ Nhật lúc 00:00 UTC
+      deleteAfter: cdk.Duration.days(90),
+    }));
+
+    // Gán DynamoDB Table vào Backup Plan
+    backupPlan.addSelection('DynamoDbBackupSelection', {
+      resources: [
+        backup.BackupResource.fromDynamoDbTable(this.mainTable)
+      ],
+      backupSelectionName: 'DynamoDbTableSelection',
+    });
+
     new cdk.CfnOutput(this, 'DynamoDBTableName', {
       value: this.mainTable.tableName,
       exportName: 'MainTableName',
@@ -50,6 +88,16 @@ export class DatabaseStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ProductsBucketName', {
       value: this.productsBucket.bucketName,
       exportName: 'ProductsBucketName',
+    });
+
+    new cdk.CfnOutput(this, 'BackupVaultArn', {
+      value: backupVault.backupVaultArn,
+      exportName: 'MusicStoreBackupVaultArn',
+    });
+
+    new cdk.CfnOutput(this, 'BackupPlanArn', {
+      value: backupPlan.backupPlanArn,
+      exportName: 'MusicStoreBackupPlanArn',
     });
   }
 }
