@@ -1,5 +1,6 @@
 "use client";
 
+import "../components/AmplifyConfig";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchAuthSession } from "@aws-amplify/auth";

@@ -36,10 +36,11 @@ const getCdkConfig = () => {
     const dbStackKey = Object.keys(outputs).find(key => key.includes("DatabaseStack"));
     if (dbStackKey) {
       const tableName = outputs[dbStackKey].DynamoDBTableName;
+      const productsBucketName = outputs[dbStackKey].ProductsBucketName;
       const tableArn = outputs[dbStackKey].ExportsOutputFnGetAttMusicStoreMainTable79B09B43ArnF84EBF26 || "";
       // Extract region from ARN: arn:aws:dynamodb:region:account:table/name
       const region = tableArn.split(":")[3] || "ap-southeast-1";
-      return { tableName, region };
+      return { tableName, productsBucketName, region };
     }
   } catch (error) {
     console.error("Error reading cdk-outputs.json:", error);
@@ -50,7 +51,7 @@ const getCdkConfig = () => {
 const cdkConfig = getCdkConfig();
 const tableName = process.env.TABLE_NAME || process.env.PRODUCTS_TABLE_NAME || cdkConfig.tableName;
 const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || cdkConfig.region || "ap-southeast-1";
-const s3BucketName = process.env.S3_BUCKET_NAME;
+const s3BucketName = process.env.S3_BUCKET_NAME || cdkConfig.productsBucketName;
 
 async function run() {
   if (!s3BucketName) {

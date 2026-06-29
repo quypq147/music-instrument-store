@@ -12,7 +12,7 @@ const app = new cdk.App();
 const envName = app.node.tryGetContext('env') || 'dev';
 
 // Khởi tạo các Stacks
-new SecurityStack(app, `MusicStoreSecurityStack-${envName}`);
+const securityStack = new SecurityStack(app, `MusicStoreSecurityStack-${envName}`);
 
 const databaseStack = new DatabaseStack(app, `MusicStoreDatabaseStack-${envName}`);
 
@@ -20,7 +20,9 @@ const authStack = new AuthStack(app, `MusicStoreAuthStack-${envName}`);
 
 new BackendStack(app, `MusicStoreBackendStack-${envName}`, {
   productsTable: databaseStack.mainTable,
+  productsBucket: databaseStack.productsBucket,
   userPool: authStack.userPool,
+  stripeSecrets: securityStack.stripeSecrets,
 });
 
 app.synth();

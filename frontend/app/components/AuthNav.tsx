@@ -1,5 +1,6 @@
 "use client";
 
+import "./AmplifyConfig";
 import { useEffect, useState } from "react";
 import { getCurrentUser, signOut, fetchUserAttributes } from "@aws-amplify/auth";
 import { Hub } from "@aws-amplify/core";
@@ -79,7 +80,9 @@ export default function AuthNav() {
     const displayName = user.name || user.email || user.username;
     return (
       <>
-        <span className="user-welcome">Xin chào, {displayName}</span>
+        <Link href="/profile" className="user-welcome hover:text-emerald-800 transition-colors">
+          Xin chào, {displayName}
+        </Link>
         <button onClick={handleSignOut} className="signout-btn">
           Đăng Xuất
         </button>
@@ -90,7 +93,6 @@ export default function AuthNav() {
   return (
     <>
       <Link href="/login">Đăng Nhập</Link>
-      <Link href="/register">Đăng Ký</Link>
     </>
   );
 }

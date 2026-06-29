@@ -6,4 +6,6 @@ export interface Product {
   price: number;
   imageUrl: string;
   description: string;
+  averageRating?: number;
+  ratingCount?: number;
 }

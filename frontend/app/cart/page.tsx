@@ -1,8 +1,10 @@
 "use client";
 
+import "../components/AmplifyConfig";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { getCurrentUser, fetchUserAttributes } from "@aws-amplify/auth";
 
 import type { CartItem, Customer, Order } from "../../types/cart";
 import { CartItemCard } from "../components/CartItemCard";
@@ -165,6 +167,17 @@ export default function Cart() {
     setIsSubmitting(true);
 
     try {
+      let userId: string | undefined;
+      let email: string | undefined;
+      try {
+        const user = await getCurrentUser();
+        userId = user.userId;
+        const attrs = await fetchUserAttributes();
+        email = attrs.email;
+      } catch {
+        // User not logged in, treat as guest
+      }
+
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: {
@@ -173,6 +186,8 @@ export default function Cart() {
         body: JSON.stringify({
           customer,
           paymentMethod,
+          userId,
+          email,
           items: selectedCart.map((item) => ({
             productId: String(item.id),
             name: item.name,
@@ -201,7 +216,7 @@ export default function Cart() {
         products: selectedCart,
         totalItems,
         totalPrice,
-        status: result.status ?? "PENDING",
+        status: result.status === "PENDING" ? "Chờ xác nhận" : (result.status ?? "Chờ xác nhận"),
         createdAt: orderTimestamp.createdAt,
       };
 

@@ -1,7 +1,6 @@
 import type { APIGatewayProxyHandler, APIGatewayProxyResult } from "aws-lambda";
 import { randomUUID } from "node:crypto";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 
 type OrderCustomer = {
   name: string;
@@ -22,10 +21,12 @@ type CreateOrderRequest = {
   customer: OrderCustomer;
   items: OrderItem[];
   paymentMethod: string;
+  userId?: string;
+  email?: string;
 };
 
-const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const tableName = process.env.TABLE_NAME;
+const sqs = new SQSClient({});
+const queueUrl = process.env.ORDER_QUEUE_URL;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": process.env.CORS_ALLOW_ORIGIN ?? "*",
@@ -107,13 +108,15 @@ const parseRequest = (body: string | null): CreateOrderRequest => {
     customer: parsed.customer,
     items: parsed.items,
     paymentMethod: parsed.paymentMethod,
+    userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
+    email: typeof parsed.email === "string" ? parsed.email : undefined,
   };
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
-    if (!tableName) {
-      throw new Error("TABLE_NAME environment variable is not set.");
+    if (!queueUrl) {
+      throw new Error("ORDER_QUEUE_URL environment variable is not set.");
     }
 
     if (event.httpMethod === "OPTIONS") {
@@ -137,6 +140,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       PK: `ORDER#${orderId}`,
       SK: "METADATA",
       id: orderId,
+      userId: request.userId,
+      email: request.email,
       customer: request.customer,
       items: request.items,
       totalItems,
@@ -147,11 +152,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       updatedAt: now,
     };
 
-    await dynamoDb.send(
-      new PutCommand({
-        TableName: tableName,
-        Item: order,
-        ConditionExpression: "attribute_not_exists(PK)",
+    // Đẩy đơn hàng vào SQS Queue để xử lý bất đồng bộ
+    await sqs.send(
+      new SendMessageCommand({
+        QueueUrl: queueUrl,
+        MessageBody: JSON.stringify(order),
       })
     );
 

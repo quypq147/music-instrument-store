@@ -25,6 +25,10 @@ const outputMappings: OutputMapping[] = [
     envName: "NEXT_PUBLIC_API_GATEWAY_URL",
     outputKeys: ["ApiGatewayUrl", "ApiUrl"],
   },
+  {
+    envName: "S3_BUCKET_NAME",
+    outputKeys: ["ProductsBucketName", "productsBucketName"],
+  },
 ];
 
 const findOutputValue = (

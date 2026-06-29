@@ -23,10 +23,9 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 var import_node_crypto = require("node:crypto");
-var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
-var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
-var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(new import_client_dynamodb.DynamoDBClient({}));
-var tableName = process.env.TABLE_NAME;
+var import_client_sqs = require("@aws-sdk/client-sqs");
+var sqs = new import_client_sqs.SQSClient({});
+var queueUrl = process.env.ORDER_QUEUE_URL;
 var corsHeaders = {
   "Access-Control-Allow-Origin": process.env.CORS_ALLOW_ORIGIN ?? "*",
   "Access-Control-Allow-Headers": "Content-Type,Authorization",
@@ -74,13 +73,15 @@ var parseRequest = (body) => {
   return {
     customer: parsed.customer,
     items: parsed.items,
-    paymentMethod: parsed.paymentMethod
+    paymentMethod: parsed.paymentMethod,
+    userId: typeof parsed.userId === "string" ? parsed.userId : void 0,
+    email: typeof parsed.email === "string" ? parsed.email : void 0
   };
 };
 var handler = async (event) => {
   try {
-    if (!tableName) {
-      throw new Error("TABLE_NAME environment variable is not set.");
+    if (!queueUrl) {
+      throw new Error("ORDER_QUEUE_URL environment variable is not set.");
     }
     if (event.httpMethod === "OPTIONS") {
       return jsonResponse(204, {});
@@ -100,6 +101,8 @@ var handler = async (event) => {
       PK: `ORDER#${orderId}`,
       SK: "METADATA",
       id: orderId,
+      userId: request.userId,
+      email: request.email,
       customer: request.customer,
       items: request.items,
       totalItems,
@@ -109,11 +112,10 @@ var handler = async (event) => {
       createdAt: now,
       updatedAt: now
     };
-    await dynamoDb.send(
-      new import_lib_dynamodb.PutCommand({
-        TableName: tableName,
-        Item: order,
-        ConditionExpression: "attribute_not_exists(PK)"
+    await sqs.send(
+      new import_client_sqs.SendMessageCommand({
+        QueueUrl: queueUrl,
+        MessageBody: JSON.stringify(order)
       })
     );
     return jsonResponse(201, {

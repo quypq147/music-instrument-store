@@ -120,7 +120,7 @@ export default async function Home() {
               className="brand-logo-card"
             >
               <Image 
-                src={`${s3BaseUrl}/logos/${brand.toLowerCase()}.png`} 
+                src={`${s3BaseUrl}/logos/${brand.toLowerCase()}-logo.png`} 
                 alt={`${brand} logo`} 
                 width={120} 
                 height={50} 

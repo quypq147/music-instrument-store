@@ -1,9 +1,12 @@
 import type { SQSHandler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
+const eventBridge = new EventBridgeClient({});
+const eventBusName = process.env.EVENT_BUS_NAME;
 
 type OrderPayload = {
   id?: string;
@@ -28,6 +31,7 @@ export const handler: SQSHandler = async (event) => {
 
       const now = new Date().toISOString();
 
+      // Lưu đơn hàng vào DynamoDB
       await dynamoDb.send(
         new PutCommand({
           TableName: tableName,
@@ -42,6 +46,49 @@ export const handler: SQSHandler = async (event) => {
           },
         })
       );
+
+      // Nếu có userId, lưu thông tin sản phẩm đã mua vào database của user đó
+      if (order.userId && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          if (item && item.productId) {
+            await dynamoDb.send(
+              new PutCommand({
+                TableName: tableName,
+                Item: {
+                  PK: `USER#${order.userId}`,
+                  SK: `BOUGHT#${item.productId}`,
+                  productId: item.productId,
+                  orderId: orderId,
+                  purchasedAt: order.createdAt ?? now,
+                },
+              })
+            );
+          }
+        }
+      }
+
+      // Bắn sự kiện OrderPlaced sang EventBridge để xử lý gửi thông báo bất đồng bộ
+      if (eventBusName) {
+        console.log(`Publishing OrderPlaced event for order ${orderId} to ${eventBusName}...`);
+        await eventBridge.send(
+          new PutEventsCommand({
+            Entries: [
+              {
+                EventBusName: eventBusName,
+                Source: "com.musicstore.order",
+                DetailType: "OrderPlaced",
+                Detail: JSON.stringify({
+                  orderId,
+                  customer: order.customer,
+                  totalPrice: order.totalPrice,
+                  totalItems: order.totalItems,
+                  paymentMethod: order.paymentMethod,
+                }),
+              },
+            ],
+          })
+        );
+      }
     } catch (error) {
       console.error("Failed to process SQS order message", {
         error,
