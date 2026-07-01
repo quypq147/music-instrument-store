@@ -41,14 +41,18 @@ var handler = async (event) => {
         throw new Error("Order payload must include an id or orderId");
       }
       const now = (/* @__PURE__ */ new Date()).toISOString();
+      const gsi1pk = order.userId ? `USER#${order.userId}` : void 0;
+      const gsi1sk = gsi1pk ? `ORDER#${orderId}` : void 0;
       await dynamoDb.send(
         new import_lib_dynamodb.PutCommand({
           TableName: tableName,
           Item: {
             ...order,
             id: orderId,
-            pk: `ORDER#${orderId}`,
-            sk: "STATUS#PENDING",
+            PK: `ORDER#${orderId}`,
+            SK: "METADATA",
+            GSI1PK: gsi1pk,
+            GSI1SK: gsi1sk,
             status: order.status ?? "PENDING",
             createdAt: order.createdAt ?? now,
             updatedAt: now

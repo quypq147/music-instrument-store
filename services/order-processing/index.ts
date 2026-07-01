@@ -31,15 +31,20 @@ export const handler: SQSHandler = async (event) => {
 
       const now = new Date().toISOString();
 
-      // Lưu đơn hàng vào DynamoDB
+      // Lưu đơn hàng vào DynamoDB với GSI1 để hỗ trợ truy vấn đa chiều (ví dụ: xem đơn hàng theo User)
+      const gsi1pk = order.userId ? `USER#${order.userId}` : undefined;
+      const gsi1sk = gsi1pk ? `ORDER#${orderId}` : undefined;
+
       await dynamoDb.send(
         new PutCommand({
           TableName: tableName,
           Item: {
             ...order,
             id: orderId,
-            pk: `ORDER#${orderId}`,
-            sk: "STATUS#PENDING",
+            PK: `ORDER#${orderId}`,
+            SK: "METADATA",
+            GSI1PK: gsi1pk,
+            GSI1SK: gsi1sk,
             status: order.status ?? "PENDING",
             createdAt: order.createdAt ?? now,
             updatedAt: now,

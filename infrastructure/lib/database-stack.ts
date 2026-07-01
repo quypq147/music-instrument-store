@@ -21,6 +21,14 @@ export class DatabaseStack extends cdk.Stack {
       pointInTimeRecovery: true, // Kích hoạt Point-in-Time Recovery (PITR) cho DynamoDB
     });
 
+    // Thêm Global Secondary Index (GSI1) cho Single Table Design
+    this.mainTable.addGlobalSecondaryIndex({
+      indexName: 'GSI1',
+      partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Khởi tạo S3 Bucket lưu trữ hình ảnh sản phẩm
     this.productsBucket = new s3.Bucket(this, 'MusicStoreProductsBucket', {
       publicReadAccess: true,
