@@ -258,8 +258,7 @@ export default async function Home() {
         .section-subtitle-flex { color: #9CA3AF; font-size: 0.95rem; font-weight: 300; margin: 0; flex: 1; text-align: right; }
       `}} />
       <div className="page-bg-overlay"></div>
-
->>>>>>> e03b19b (Cap nhat giao dien moi nhat)
+      
       {/* HERO */}
       <section className="hero-dark">
         <div className="hero-bg-glow"></div>
