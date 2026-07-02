@@ -26,7 +26,7 @@ export default function Register() {
   const handleOAuth = async (provider: 'Google' | 'Facebook') => {
     try {
       await signInWithRedirect({ provider });
-    } catch (error: any) {
+    } catch (error) {
       console.error(`OAuth error (${provider}):`, error);
       alert(`Đăng nhập bằng ${provider} hiện chưa khả dụng (Chưa cấu hình OAuth trên hệ thống). Vui lòng sử dụng đăng ký bằng email tĩnh.`);
     }

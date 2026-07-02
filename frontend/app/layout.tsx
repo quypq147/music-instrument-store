@@ -1,12 +1,10 @@
 import "./globals.css";
 import { CartProvider } from "./context/CartContext";
-import CartButton from "./components/CartButton";
 import ChatWidget from "./components/ChatWidget";
 import FloatingContacts from "./components/FloatingContacts";
 import { Playfair_Display, Inter } from "next/font/google";
 import Link from "next/link";
 import AmplifyConfig from "./components/AmplifyConfig";
-import AuthNav from "./components/AuthNav";
 import ConditionalLayout from "./components/ConditionalLayout";
 import ClientHeader from "./components/ClientHeader";
 

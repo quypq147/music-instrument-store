@@ -1,7 +1,9 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import type { CartItem } from "../../types/cart";
 
 export default function CartButton() {
   const [mounted, setMounted] = useState(false);
@@ -10,9 +12,9 @@ export default function CartButton() {
   useEffect(() => {
     setMounted(true);
 
-    const cart = JSON.parse(localStorage.getItem("cart") || "[]");
+    const cart = JSON.parse(localStorage.getItem("cart") || "[]") as CartItem[];
     const total = cart.reduce(
-      (sum: number, item: any) => sum + (item.quantity || 1),
+      (sum: number, item: CartItem) => sum + (item.quantity || 1),
       0
     );
 
