@@ -30,8 +30,10 @@ Trong dự án này, tệp tin backend [frontend/app/api/chat/route.ts](file:///
 3. Nhấp **Next**.
 
 ### Bước 2.3: Thêm ngôn ngữ cho Bot
-1. **Select language**: Chọn **Vietnamese (vi_VN)** (Tiếng Việt).
-2. **Voice interaction**: Chọn giọng nói tiếng Việt cho bot (nếu sử dụng hội thoại bằng giọng nói, ví dụ: *Chi*). Bạn có thể giữ mặc định.
+1. **Select language**: Chọn **English (US)**.
+   > [!NOTE]
+   > File [route.ts](file:///E:/Project/repo/music-instrument-store/frontend/app/api/chat/route.ts) hiện tại đang cấu hình cứng tham số `localeId: "en_US"`. Nếu muốn hỗ trợ Tiếng Việt (`vi_VN`), bạn có thể thêm ngôn ngữ Tiếng Việt trên Lex và cập nhật lại tham số `localeId` trong code Next.js thành `"vi_VN"`.
+2. **Voice interaction**: Chọn giọng nói cho bot (nếu sử dụng Voice, ví dụ: *Joanna* hoặc *Matthew*). Bạn có thể giữ mặc định.
 3. Nhấp **Done**.
 
 ---
@@ -44,6 +46,8 @@ Sau khi tạo Bot, bạn sẽ được đưa vào giao diện **Intent list** đ
 1. Trong mục **Intents**, nhấp **Add intent** -> chọn **Add empty intent**.
 2. Đặt tên: `WelcomeIntent`.
 3. Di chuyển đến phần **Sample utterances** (Các câu thoại mẫu), nhập các câu người dùng có thể nói và bấm **Add utterance** sau mỗi câu:
+   * *Hello*
+   * *Hi*
    * *Xin chào*
    * *Chào bot*
    * *Cần giúp đỡ*
@@ -56,6 +60,7 @@ Sau khi tạo Bot, bạn sẽ được đưa vào giao diện **Intent list** đ
 2. Thêm các câu mẫu **Sample utterances**:
    * *Tôi muốn mua kèn saxophone*
    * *Cửa hàng bán những loại nhạc cụ nào?*
+   * *Show me your instruments*
    * *saxophone*
 3. Di chuyển đến phần **Closing responses** -> Nhập phản hồi:
    * *Cửa hàng hiện có các loại kèn Saxophone cao cấp từ Yamaha, Selmer,... Bạn có thể truy cập trang Sản phẩm để xem chi tiết nhé!*
@@ -66,6 +71,7 @@ Sau khi tạo Bot, bạn sẽ được đưa vào giao diện **Intent list** đ
 2. Nhập các câu mẫu **Sample utterances**:
    * *Kiểm tra đơn hàng của tôi*
    * *Đơn hàng của tôi đâu rồi*
+   * *Check my order status*
 3. Bạn có thể sử dụng **Slots** (Tham số) để thu thập mã đơn hàng:
    * Tại mục **Slots**, nhấp **Add slot**.
    * **Name**: `orderId`
@@ -82,7 +88,7 @@ Sau khi tạo Bot, bạn sẽ được đưa vào giao diện **Intent list** đ
 
 1. Ở góc trên bên phải màn hình Lex Console, nhấp nút **Build** để biên dịch chatbot. Quá trình này mất khoảng 10-30 giây.
 2. Sau khi build thành công, nhấp nút **Test** ngay bên cạnh.
-3. Giao diện trò chuyện trực tuyến sẽ mở ra ở bên phải. Hãy thử nhập *"Xin chào"* hoặc *"saxophone"* để kiểm tra xem Bot phản hồi có chính xác theo các kịch bản đã định nghĩa hay không.
+3. Giao diện trò chuyện trực tuyến sẽ mở ra ở bên phải. Hãy thử nhập *"Hello"* hoặc *"saxophone"* để kiểm tra xem Bot phản hồi có chính xác theo các kịch bản đã định nghĩa hay không.
 
 ---
 
