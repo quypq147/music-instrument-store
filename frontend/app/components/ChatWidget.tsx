@@ -1,11 +1,9 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import "./AmplifyConfig";
 import { useState, useRef, useEffect } from "react";
 // Import thư viện Amplify để lấy token của User đang đăng nhập
 import { fetchAuthSession } from "aws-amplify/auth";
-import { useLanguage } from "../../context/LanguageContext";
 
 interface Message {
   text: string;
@@ -13,18 +11,10 @@ interface Message {
 }
 
 export default function ChatWidget() {
-  const { language, t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-
-  useEffect(() => {
-    setMessages((prev) => {
-      if (prev.length <= 1) {
-        return [{ text: t("chat.greeting"), sender: "bot" }];
-      }
-      return prev;
-    });
-  }, [language, t]);
+  const [messages, setMessages] = useState<Message[]>([
+    { text: "Chào bạn! Tôi là trợ lý ảo của Music Store. Tôi có thể giúp gì cho bạn hôm nay?", sender: "bot" }
+  ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -50,7 +40,7 @@ export default function ChatWidget() {
       const token = session.tokens?.idToken?.toString();
 
       if (!token) {
-        setMessages((prev) => [...prev, { text: t("chat.login_required"), sender: "bot" }]);
+        setMessages((prev) => [...prev, { text: "Vui lòng đăng nhập để sử dụng tính năng Chatbot nhé!", sender: "bot" }]);
         setIsLoading(false);
         return;
       }
@@ -77,11 +67,11 @@ export default function ChatWidget() {
           setMessages((prev) => [...prev, { text: msg, sender: "bot" }]);
         });
       } else {
-        setMessages((prev) => [...prev, { text: t("chat.not_understood"), sender: "bot" }]);
+        setMessages((prev) => [...prev, { text: "Xin lỗi, tôi chưa hiểu ý bạn.", sender: "bot" }]);
       }
     } catch (error) {
       console.error("Chat API Error:", error);
-      setMessages((prev) => [...prev, { text: t("chat.connection_error"), sender: "bot" }]);
+      setMessages((prev) => [...prev, { text: "Lỗi kết nối đến máy chủ AWS.", sender: "bot" }]);
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +83,7 @@ export default function ChatWidget() {
         <div className="chat-box">
           {/* Header */}
           <div className="chat-header">
-            <strong>{t("chat.title")}</strong>
+            <strong>Trợ lý Music Store</strong>
             <button type="button" onClick={() => setIsOpen(false)}>✕</button>
           </div>
           
@@ -109,7 +99,7 @@ export default function ChatWidget() {
             ))}
             {isLoading && (
               <div className="bot-msg" style={{ fontStyle: "italic", opacity: 0.7 }}>
-                {t("chat.typing")}
+                Bot đang gõ...
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -122,14 +112,14 @@ export default function ChatWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              placeholder={t("chat.placeholder")}
+              placeholder="Nhập yêu cầu..."
             />
             <button 
               type="button"
               onClick={sendMessage} 
               disabled={isLoading}
             >
-              {t("chat.send")}
+              Gửi
             </button>
           </div>
         </div>
