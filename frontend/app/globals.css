@@ -2,63 +2,63 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #002B1F;
-  --color-primary-container: #054030;
-  --color-on-primary: #ffffff;
-  --color-secondary: #C58A3E;
-  --color-secondary-container: #DF9E47;
-  --color-on-secondary: #ffffff;
-  --color-gold-muted: #A36B2B;
-  --color-background: #FCFCFC;
-  --color-surface-cream: #F8F5F0;
-  --color-border-subtle: #E8E5E1;
+  --color-primary: #0F1F1A;
+  --color-primary-container: #1A3530;
+  --color-on-primary: #E8F5F1;
+  --color-secondary: #D4A574;
+  --color-secondary-container: #E8B88B;
+  --color-on-secondary: #1A1A1A;
+  --color-gold-muted: #B8956F;
+  --color-background: #FAFAF8;
+  --color-surface-cream: #F5F1ED;
+  --color-border-subtle: #E8E3DC;
   --color-on-surface: #1A1A1A;
-  --color-on-surface-variant: #4A4A4A;
-  --color-on-secondary-container: #663500;
-  --color-primary-fixed: #b0f0d6;
-  --color-surface-container-highest: #e0e3e5;
+  --color-on-surface-variant: #6B6B6B;
+  --color-on-secondary-container: #3D2817;
+  --color-primary-fixed: #7EE8D1;
+  --color-surface-container-highest: #ECEAE6;
   --color-on-tertiary-fixed-variant: #3c475a;
   --color-on-tertiary-fixed: #111c2d;
-  --color-outline: #707974;
+  --color-outline: #7C8985;
   --color-on-error-container: #93000a;
-  --color-surface-variant: #e0e3e5;
+  --color-surface-variant: #E8E3DC;
   --color-on-error: #ffffff;
-  --color-on-primary-container: #80bea6;
+  --color-on-primary-container: #A8D5CA;
   --color-tertiary-container: #3a4558;
-  --color-surface: #f7f9fb;
-  --color-surface-container-low: #f2f4f6;
+  --color-surface: #FAFAF8;
+  --color-surface-container-low: #F5F3F0;
   --color-error-container: #ffdad6;
-  --color-surface-container: #eceef0;
-  --color-outline-variant: #bfc9c3;
-  --color-on-secondary-fixed: #2f1500;
-  --color-secondary-fixed-dim: #ffb77d;
+  --color-surface-container: #F0EEEB;
+  --color-outline-variant: #D0C7C0;
+  --color-on-secondary-fixed: #4D2C00;
+  --color-secondary-fixed-dim: #E8C9A8;
   --color-on-tertiary: #ffffff;
-  --color-on-primary-fixed: #002117;
-  --color-on-background: #191c1e;
-  --color-surface-bright: #f7f9fb;
-  --color-on-primary-fixed-variant: #0b513d;
-  --color-surface-container-high: #e6e8ea;
+  --color-on-primary-fixed: #001F18;
+  --color-on-background: #1A1A1A;
+  --color-surface-bright: #FAFAF8;
+  --color-on-primary-fixed-variant: #0F4536;
+  --color-surface-container-high: #EDE8E4;
   --color-tertiary-fixed-dim: #bcc7de;
-  --color-surface-tint: #2b6954;
+  --color-surface-tint: #348073;
   --color-surface-container-lowest: #ffffff;
-  --color-tertiary: #242f41;
-  --color-error: #ba1a1a;
-  --color-primary-fixed-dim: #95d3ba;
-  --color-inverse-on-surface: #eff1f3;
-  --color-tertiary-fixed: #d8e3fb;
-  --color-surface-dim: #d8dadc;
-  --color-secondary-fixed: #ffdcc3;
-  --color-on-tertiary-container: #a7b2c9;
-  --color-on-secondary-fixed-variant: #6e3900;
-  --color-inverse-surface: #2d3133;
-  --color-inverse-primary: #95d3ba;
+  --color-tertiary: #2D3C4F;
+  --color-error: #BA1A1A;
+  --color-primary-fixed-dim: #5FD5BD;
+  --color-inverse-on-surface: #F0F5F3;
+  --color-tertiary-fixed: #D8E3FB;
+  --color-surface-dim: #E0DDDA;
+  --color-secondary-fixed: #F4D9C3;
+  --color-on-tertiary-container: #9BA8C5;
+  --color-on-secondary-fixed-variant: #8B5A2B;
+  --color-inverse-surface: #2D3633;
+  --color-inverse-primary: #7EE8D1;
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-serif), ui-serif, Georgia, serif;
 
-  --radius-DEFAULT: 0.125rem;
-  --radius-lg: 0.25rem;
-  --radius-xl: 0.5rem;
-  --radius-full: 0.75rem;
+  --radius-DEFAULT: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 50%;
 
   --spacing-container-margin: clamp(1rem, 5vw, 4rem);
   --spacing-stack-md: 1.5rem;
@@ -113,13 +113,13 @@
   background: linear-gradient(135deg, rgba(0, 53, 39, 0.95) 0%, rgba(6, 78, 59, 0.9) 100%);
 }
 .input-focus-effect:focus {
-  border-color: #B45309;
-  box-shadow: 0 0 0 1px #B45309;
+  border-color: var(--color-secondary);
+  box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.15);
   outline: none;
 }
 .form-input-focus:focus {
-  border-color: #B45309;
-  box-shadow: 0 0 0 1px rgba(180, 83, 9, 0.2);
+  border-color: var(--color-secondary);
+  box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.1);
 }
 
 :root {
@@ -135,8 +135,8 @@
   --color-border-subtle: #E8E5E1;
   --color-on-surface: #1A1A1A;
   --color-on-surface-variant: #4A4A4A;
-  --rounded-sm: 0.25rem;
-  --rounded-lg: 0.5rem;
+  --rounded-sm: 8px;
+  --rounded-lg: 12px;
 }
 
 * {
@@ -188,9 +188,9 @@ h6 { font-size: 1rem; line-height: 1.5rem; }
 button {
   font-family: var(--font-sans);
   font-weight: 600;
-  border-radius: var(--rounded-sm);
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* UNIFIED HEADER */
@@ -268,16 +268,16 @@ button {
   color: white;
   padding: 8px 14px;
   font-size: 13px;
-  border-radius: var(--rounded-sm);
+  border-radius: 8px;
   outline: none;
   width: 180px;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .search-box-minimal input:focus {
   width: 220px;
-  background: rgba(255, 255, 255, 0.15);
-  border-color: var(--color-secondary);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .search-box-minimal input::placeholder {
@@ -352,18 +352,18 @@ button {
 .premium-hero {
   margin: 2rem 0 4rem;
   padding: 5rem 6%;
-  border-radius: var(--rounded-lg);
+  border-radius: 16px;
   background-color: var(--color-primary);
-  background-image: radial-gradient(circle at 85% 30%, rgba(197, 138, 62, 0.25), transparent 45%),
-                    radial-gradient(circle at 15% 85%, rgba(5, 64, 48, 0.8), transparent 50%),
-                    linear-gradient(135deg, var(--color-primary) 0%, #001a12 100%);
+  background-image: radial-gradient(circle at 85% 30%, rgba(212, 165, 116, 0.15), transparent 50%),
+                    radial-gradient(circle at 15% 85%, rgba(15, 31, 26, 0.6), transparent 60%),
+                    linear-gradient(135deg, var(--color-primary) 0%, #0A1815 100%);
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;
   align-items: center;
   gap: 4rem;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 24px 50px rgba(0, 43, 31, 0.15);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
 }
 
 .premium-content {
@@ -375,14 +375,14 @@ button {
 .hero-badge {
   display: inline-block;
   padding: 6px 14px;
-  border-radius: 20px;
-  background: rgba(197, 138, 62, 0.15);
-  border: 1px solid rgba(197, 138, 62, 0.4);
+  border-radius: 24px;
+  background: rgba(212, 165, 116, 0.12);
+  border: 1px solid rgba(212, 165, 116, 0.3);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: var(--color-secondary-container);
+  color: #E8B88B;
   margin-bottom: 1.5rem;
 }
 
@@ -444,40 +444,44 @@ button {
 
 .primary-btn {
   background-color: var(--color-secondary);
-  color: white;
+  color: #1A1A1A;
   border: none;
   padding: 14px 32px;
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  border-radius: var(--rounded-sm);
-  transition: all 0.3s ease;
-  box-shadow: 0 8px 20px rgba(197, 138, 62, 0.25);
+  border-radius: 8px;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(212, 165, 116, 0.2);
 }
 
 .primary-btn:hover {
-  background-color: var(--color-secondary-container);
+  background-color: #C89860;
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(197, 138, 62, 0.35);
+  box-shadow: 0 8px 20px rgba(212, 165, 116, 0.3);
+}
+
+.primary-btn:active {
+  transform: translateY(0);
 }
 
 .secondary-btn {
-  background-color: transparent;
+  background-color: rgba(255, 255, 255, 0.08);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
   padding: 14px 32px;
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  border-radius: var(--rounded-sm);
-  transition: all 0.3s ease;
+  border-radius: 8px;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .secondary-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: white;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
   transform: translateY(-2px);
 }
 
@@ -532,22 +536,23 @@ button {
 .category-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
+  gap: 2rem;
 }
 
 .category-image-card {
   background: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   overflow: hidden;
-  padding: 1rem;
+  padding: 1.5rem 1rem;
   text-align: center;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
   cursor: pointer;
   outline: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .category-image-card img {
@@ -555,23 +560,29 @@ button {
   height: 180px;
   object-fit: contain;
   margin-bottom: 1rem;
-  transition: transform 0.3s ease;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .category-image-card p {
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-primary);
+  transition: color 0.3s ease;
 }
 
 .category-image-card:hover {
   border-color: var(--color-secondary);
-  box-shadow: 0 15px 30px rgba(6, 78, 59, 0.04);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px);
 }
 
 .category-image-card:hover img {
-  transform: scale(1.05);
+  transform: scale(1.08);
+}
+
+.category-image-card:hover p {
+  color: var(--color-secondary);
 }
 
 .category-image-card.active-category {
@@ -589,51 +600,58 @@ button {
 .brand-logo-card {
   background: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 2rem 1.5rem;
   text-align: center;
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--color-primary-container);
-  transition: all 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   outline: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .brand-logo-card:hover {
   border-color: var(--color-secondary);
   color: var(--color-secondary);
   background-color: var(--color-surface-cream);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
 }
 
 /* FILTERS */
 .filter-box {
-  background-color: var(--color-surface-cream);
+  background-color: white;
   padding: 1.5rem;
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   border: 1px solid var(--color-border-subtle);
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr auto;
   gap: 1rem;
   align-items: center;
   margin-bottom: 3.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .filter-box input, .filter-box select {
   height: 46px;
-  padding: 0 16px;
+  padding: 0 14px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 8px;
   font-family: var(--font-sans);
   font-size: 14px;
   outline: none;
-  background-color: white;
+  background-color: var(--color-surface-bright);
   width: 100%;
+  transition: all 0.3s ease;
 }
 
 .filter-box input:focus, .filter-box select:focus {
   border-color: var(--color-secondary);
+  background-color: white;
+  box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.1);
 }
 
 .filter-box button.secondary-btn {
@@ -655,20 +673,27 @@ button {
 .products {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
+  gap: 2.5rem;
   margin-bottom: 5rem;
 }
 
 .card {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   overflow: hidden;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.card:hover {
+  border-color: var(--color-secondary);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px);
 }
 
 .product-card-image {
@@ -744,13 +769,8 @@ button {
   background-color: var(--color-secondary);
 }
 
-.card:hover {
-  border-color: var(--color-secondary);
-  box-shadow: 0 20px 40px rgba(6, 78, 59, 0.05);
-}
-
 .card:hover .product-card-image img {
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 .product-status {
@@ -770,8 +790,9 @@ button {
 .yamaha-style-detail {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 3rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .yamaha-product-title {
@@ -790,13 +811,14 @@ button {
 }
 
 .yamaha-main-image {
-  background-color: var(--color-surface-cream);
-  border-radius: var(--rounded-sm);
+  background-color: var(--color-surface-bright);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
   height: 480px;
+  border: 1px solid var(--color-border-subtle);
 }
 
 .yamaha-main-image img {
@@ -934,9 +956,10 @@ button {
 .empty-cart-box {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 4rem 2rem;
   text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .empty-cart-icon {
@@ -978,8 +1001,9 @@ button {
 .cart-list {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .cart-shop-header {
@@ -1010,13 +1034,20 @@ button {
   grid-template-columns: auto auto 1fr auto;
   gap: 1.5rem;
   align-items: center;
-  padding: 1.5rem 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: white;
+  transition: all 0.3s ease;
 }
 
-.cart-item-card:last-child {
-  border-bottom: none;
+.cart-item-card:hover {
+  border-color: var(--color-secondary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
+
+/* Styles removed for modernization */
 
 .cart-checkbox {
   width: 18px;
@@ -1107,10 +1138,11 @@ button {
 }
 
 .cart-summary-box {
-  background-color: var(--color-surface-cream);
+  background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .cart-summary-box h2 {
@@ -1199,8 +1231,8 @@ button {
 .checkout-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 53, 39, 0.4);
-  backdrop-filter: blur(4px);
+  background-color: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(6px);
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -1210,13 +1242,14 @@ button {
 
 .checkout-box {
   background-color: white;
-  border-radius: var(--rounded-sm);
+  border-radius: 16px;
   width: 100%;
   max-width: 520px;
   padding: 2.5rem;
   border: 1px solid var(--color-border-subtle);
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 
 .checkout-box h2 {
@@ -1228,17 +1261,21 @@ button {
 
 .checkout-box input, .checkout-box textarea {
   width: 100%;
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 8px;
   margin-bottom: 1rem;
   font-family: var(--font-sans);
   font-size: 14px;
   outline: none;
+  background-color: var(--color-surface-bright);
+  transition: all 0.3s ease;
 }
 
 .checkout-box input:focus, .checkout-box textarea:focus {
   border-color: var(--color-secondary);
+  background-color: white;
+  box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.1);
 }
 
 /* ADDRESS SELECTOR STYLES */
@@ -1430,9 +1467,10 @@ button {
 .empty-orders {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 4rem;
   text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .empty-orders h2 {
@@ -1468,8 +1506,15 @@ button {
 .order-card {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  transition: all 0.3s ease;
+}
+
+.order-card:hover {
+  border-color: var(--color-secondary);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
 }
 
 .order-header {
@@ -1623,12 +1668,12 @@ button {
 .login-card, .register-card {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 16px;
   width: 100%;
   max-width: 440px;
   padding: 3rem 2.5rem;
   text-align: center;
-  box-shadow: 0 15px 35px rgba(6, 78, 59, 0.03);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .login-icon, .register-icon {
@@ -1708,10 +1753,11 @@ button {
 }
 
 .admin-sidebar {
-  background-color: var(--color-surface-cream);
+  background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .sidebar-header {
@@ -1780,9 +1826,10 @@ button {
 .admin-content {
   background-color: white;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   padding: 2.5rem;
   min-height: 600px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .admin-section h2 {
@@ -1856,13 +1903,14 @@ button {
 }
 
 .admin-table th {
-  background-color: var(--color-surface-cream);
+  background-color: var(--color-surface-bright);
   font-family: var(--font-sans);
   font-weight: 600;
   color: var(--color-primary);
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.05em;
+  border-color: var(--color-border-subtle);
 }
 
 .admin-table tbody tr:hover {
@@ -1924,8 +1972,8 @@ button {
 .admin-modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 53, 39, 0.5);
-  backdrop-filter: blur(4px);
+  background-color: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(6px);
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -1935,13 +1983,14 @@ button {
 
 .admin-modal-box {
   background-color: white;
-  border-radius: var(--rounded-sm);
+  border-radius: 16px;
   width: 100%;
   max-width: 640px;
   padding: 2.5rem;
   max-height: 90vh;
   overflow-y: auto;
   border: 1px solid var(--color-border-subtle);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 
 .modal-header {
@@ -2049,14 +2098,15 @@ button {
   border: none;
   border-radius: 50%;
   background-color: var(--color-secondary);
-  color: white;
+  color: #1A1A1A;
   font-size: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 9999;
-  box-shadow: 0 10px 25px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 8px 20px rgba(212, 165, 116, 0.25);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chat-floating-btn:hover {
@@ -2085,10 +2135,10 @@ button {
   bottom: 105px;
   width: 360px;
   background-color: white;
-  border-radius: var(--rounded-sm);
+  border-radius: 12px;
   overflow: hidden;
   z-index: 9999;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   border: 1px solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
@@ -2101,7 +2151,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 2px solid var(--color-secondary);
+  border-bottom: 1px solid rgba(232, 184, 139, 0.2);
 }
 
 .chat-header strong {
@@ -2185,8 +2235,9 @@ button {
   background-color: var(--color-primary);
   color: white;
   padding: 5rem 5% 2rem;
-  border-top: 4px solid var(--color-secondary);
+  border-top: 2px solid var(--color-secondary);
   margin-top: 5rem;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .footer-container {
