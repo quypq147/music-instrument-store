@@ -178,7 +178,7 @@ export default function AddressSelector({
   };
 
   const selectClasses =
-    "w-full py-3 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 transition-all outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] disabled:opacity-60 disabled:cursor-not-allowed";
+    "w-full py-3 px-4 bg-white dark:bg-[#031d16] border border-gray-200 dark:border-emerald-900/40 rounded-xl text-sm text-slate-700 dark:text-emerald-50 transition-all outline-none focus:border-[#002B1F] dark:focus:border-secondary focus:shadow-[0_0_0_1px_#002B1F] dark:focus:shadow-[0_0_0_1px_#DF9E47] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer";
 
   return (
     <div className="space-y-3">
@@ -189,9 +189,9 @@ export default function AddressSelector({
           disabled={disabled || loadingProvinces}
           className={selectClasses}
         >
-          <option value="">-- Tỉnh/Thành phố --</option>
+          <option value="" className="bg-white dark:bg-[#06261d] text-slate-700 dark:text-emerald-50">-- Tỉnh/Thành phố --</option>
           {provinces.map((p) => (
-            <option key={p.code} value={p.code}>
+            <option key={p.code} value={p.code} className="bg-white dark:bg-[#06261d] text-slate-700 dark:text-emerald-50">
               {p.name}
             </option>
           ))}
@@ -203,9 +203,9 @@ export default function AddressSelector({
           disabled={disabled || !selectedProvince || loadingDistricts}
           className={selectClasses}
         >
-          <option value="">-- Quận/Huyện --</option>
+          <option value="" className="bg-white dark:bg-[#06261d] text-slate-700 dark:text-emerald-50">-- Quận/Huyện --</option>
           {districts.map((d) => (
-            <option key={d.code} value={d.code}>
+            <option key={d.code} value={d.code} className="bg-white dark:bg-[#06261d] text-slate-700 dark:text-emerald-50">
               {d.name}
             </option>
           ))}
@@ -217,9 +217,9 @@ export default function AddressSelector({
           disabled={disabled || !selectedDistrict || loadingWards}
           className={selectClasses}
         >
-          <option value="">-- Phường/Xã --</option>
+          <option value="" className="bg-white dark:bg-[#06261d] text-slate-700 dark:text-emerald-50">-- Phường/Xã --</option>
           {wards.map((w) => (
-            <option key={w.code} value={w.code}>
+            <option key={w.code} value={w.code} className="bg-white dark:bg-[#06261d] text-slate-700 dark:text-emerald-50">
               {w.name}
             </option>
           ))}
@@ -232,7 +232,7 @@ export default function AddressSelector({
         value={detailedAddress}
         onChange={onDetailChange}
         disabled={disabled}
-        className="w-full py-3 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 transition-all outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full py-3 px-4 bg-white dark:bg-[#031d16] border border-gray-200 dark:border-emerald-900/40 rounded-xl text-sm text-slate-700 dark:text-emerald-50 transition-all outline-none focus:border-[#002B1F] dark:focus:border-secondary focus:shadow-[0_0_0_1px_#002B1F] dark:focus:shadow-[0_0_0_1px_#DF9E47] disabled:opacity-60 disabled:cursor-not-allowed placeholder:text-gray-400 dark:placeholder:text-emerald-900/40"
       />
     </div>
   );
