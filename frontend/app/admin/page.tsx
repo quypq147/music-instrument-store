@@ -1,17 +1,17 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import "../components/AmplifyConfig";
+import "../components/common/AmplifyConfig";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchAuthSession } from "aws-amplify/auth";
 import type { Product } from "../../types/product";
 import type { Order } from "../../types/cart";
-import { AdminSidebar } from "../components/AdminSidebar";
-import { ProductTable } from "../components/ProductTable";
-import { ProductModal } from "../components/ProductModal";
-import { OrderTable } from "../components/OrderTable";
-import { OrderDetailsModal } from "../components/OrderDetailsModal";
+import { AdminSidebar } from "../components/admin/AdminSidebar";
+import { ProductTable } from "../components/product/ProductTable";
+import { ProductModal } from "../components/product/ProductModal";
+import { OrderTable } from "../components/order/OrderTable";
+import { OrderDetailsModal } from "../components/order/OrderDetailsModal";
 
 interface AdminUser {
   userId: string;

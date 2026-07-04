@@ -1,15 +1,15 @@
 "use client";
 
-import "../components/AmplifyConfig";
+import "../components/common/AmplifyConfig";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../context/ToastContext";
 import { fetchAuthSession, getCurrentUser, updatePassword } from "aws-amplify/auth";
-import AddressSelector from "../components/AddressSelector";
-import { OrderCard } from "../components/OrderCard";
+import AddressSelector from "../components/address/AddressSelector";
+import { OrderCard } from "../components/order/OrderCard";
 import type { Order } from "../../types/cart";
-import MusicLoading from "../components/MusicLoading";
+import MusicLoading from "../components/common/MusicLoading";
 
 interface DbOrderItem {
   productId: string;

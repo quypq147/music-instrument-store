@@ -17,12 +17,14 @@
     "@stripe/stripe-js": "^9.8.0",
     "@swc/helpers": "^0.5.23",
     "aws-amplify": "^6.18.0",
+    "lucide-react": "^1.23.0",
     "next": "^16.2.9",
     "openai": "^6.44.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

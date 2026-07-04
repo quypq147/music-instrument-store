@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { CheckCircle2, XCircle, AlertTriangle, Info, X } from "lucide-react";
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
@@ -51,30 +52,14 @@ export function useToast() {
 function ToastIcon({ type }: { type: ToastType }) {
   switch (type) {
     case "success":
-      return (
-        <svg style={{ width: "22px", height: "22px", color: "#10B981" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      );
+      return <CheckCircle2 style={{ width: "22px", height: "22px", color: "#10B981" }} />;
     case "error":
-      return (
-        <svg style={{ width: "22px", height: "22px", color: "#EF4444" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      );
+      return <XCircle style={{ width: "22px", height: "22px", color: "#EF4444" }} />;
     case "warning":
-      return (
-        <svg style={{ width: "22px", height: "22px", color: "#F59E0B" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-      );
+      return <AlertTriangle style={{ width: "22px", height: "22px", color: "#F59E0B" }} />;
     case "info":
     default:
-      return (
-        <svg style={{ width: "22px", height: "22px", color: "#3B82F6" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      );
+      return <Info style={{ width: "22px", height: "22px", color: "#3B82F6" }} />;
   }
 }
 
@@ -168,9 +153,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
         <p className="toast-message">{message}</p>
       </div>
       <button className="toast-close" onClick={handleManualRemove}>
-        <svg style={{ width: "16px", height: "16px" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <X style={{ width: "16px", height: "16px" }} strokeWidth={2.5} />
       </button>
 
       {/* Animated progress indicator */}
