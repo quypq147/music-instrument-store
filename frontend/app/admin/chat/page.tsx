@@ -95,7 +95,9 @@ export default function AdminChatPage() {
   };
 
   useEffect(() => {
-    fetchSessions();
+    (async () => {
+      await fetchSessions();
+    })();
     const interval = setInterval(fetchSessions, 5000); // Polling danh sách phiên mỗi 5 giây
     return () => clearInterval(interval);
   }, [selectedSession?.sessionId]);
@@ -115,11 +117,13 @@ export default function AdminChatPage() {
 
   useEffect(() => {
     if (!selectedSession) {
-      setMessages([]);
+      (() => setMessages([]))();
       return;
     }
 
-    fetchHistory(selectedSession.sessionId);
+    (async () => {
+      await fetchHistory(selectedSession.sessionId);
+    })();
     const interval = setInterval(() => {
       fetchHistory(selectedSession.sessionId);
     }, 2500); // Polling tin nhắn mới mỗi 2.5 giây
@@ -276,9 +280,10 @@ export default function AdminChatPage() {
       } else {
         showToast("Gửi tin nhắn chứa file thất bại.", "error");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Staff upload file error:", err);
-      showToast(err.message || "Không thể gửi file lúc này.", "error");
+      const message = err instanceof Error ? err.message : undefined;
+      showToast(message || "Không thể gửi file lúc này.", "error");
     } finally {
       setIsSending(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

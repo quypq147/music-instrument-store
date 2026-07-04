@@ -46,7 +46,9 @@ export default function AdminCategoriesPage() {
   };
 
   useEffect(() => {
-    fetchCategories();
+    (async () => {
+      await fetchCategories();
+    })();
   }, []);
 
   const handleOpenAddModal = () => {
@@ -124,9 +126,10 @@ export default function AdminCategoriesPage() {
       setIsModalOpen(false);
       setLoading(true);
       fetchCategories();
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error saving category:", error);
-      showToast(error.message || "Không thể lưu danh mục. Vui lòng thử lại!", "error");
+      const message = error instanceof Error ? error.message : undefined;
+      showToast(message || "Không thể lưu danh mục. Vui lòng thử lại!", "error");
     } finally {
       setIsSubmitting(false);
     }

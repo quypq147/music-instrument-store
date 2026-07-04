@@ -22,7 +22,7 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
 
   useEffect(() => {
     if (!isOpen || !order) {
-      setHistory([]);
+      (() => setHistory([]))();
       return;
     }
 

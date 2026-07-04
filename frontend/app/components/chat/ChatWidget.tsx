@@ -13,6 +13,13 @@ interface Message {
   createdAt?: string;
 }
 
+interface RawChatMessage {
+  text: string;
+  sender: string;
+  senderName?: string;
+  createdAt?: string;
+}
+
 const EMOJIS = ["😊", "👍", "❤️", "🎷", "👋", "🙏", "😮", "🎉"];
 
 const formatSize = (bytes: number) => {
@@ -82,9 +89,9 @@ export default function ChatWidget() {
         }
         if (data.messages && data.messages.length > 0) {
           setMessages(
-            data.messages.map((m: any) => ({
+            data.messages.map((m: RawChatMessage) => ({
               text: m.text,
-              sender: m.sender.toLowerCase() as any,
+              sender: m.sender.toLowerCase() as Message["sender"],
               senderName: m.senderName,
               createdAt: m.createdAt,
             }))
@@ -98,7 +105,9 @@ export default function ChatWidget() {
 
   useEffect(() => {
     if (isOpen) {
-      fetchHistory();
+      (async () => {
+        await fetchHistory();
+      })();
     }
     // Dispatch event to notify FloatingContacts to hide/show itself
     window.dispatchEvent(new CustomEvent("chat-widget-toggle", { detail: { isOpen } }));
@@ -131,9 +140,9 @@ export default function ChatWidget() {
           if (data.messages && data.messages.length > 0) {
             setMessages((prev) => {
               if (data.messages.length > prev.length) {
-                return data.messages.map((m: any) => ({
+                return data.messages.map((m: RawChatMessage) => ({
                   text: m.text,
-                  sender: m.sender.toLowerCase() as any,
+                  sender: m.sender.toLowerCase() as Message["sender"],
                   senderName: m.senderName,
                   createdAt: m.createdAt,
                 }));
@@ -321,9 +330,10 @@ export default function ChatWidget() {
       
       showToast(`Đã gửi đính kèm file ${file.name} thành công!`, "success");
       await fetchHistory();
-    } catch (err: any) {
+    } catch (err) {
       console.error("File upload sending error:", err);
-      showToast(err.message || "Không thể gửi file đính kèm.", "error");
+      const message = err instanceof Error ? err.message : undefined;
+      showToast(message || "Không thể gửi file đính kèm.", "error");
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

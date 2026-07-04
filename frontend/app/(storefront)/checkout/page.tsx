@@ -59,10 +59,12 @@ function StripeForm({
       }
     }
 
+    const successUrl = `/checkout/success?orderId=${orderId}&method=Stripe&amount=${amount}`;
+
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: window.location.origin + "/orders",
+        return_url: window.location.origin + successUrl,
       },
       redirect: "if_required",
     });
@@ -75,10 +77,10 @@ function StripeForm({
       setIsProcessing(false);
       setMessage("succeeded");
       setTimeout(() => {
-        router.push("/orders");
+        router.push(successUrl);
       }, 2500);
     } else {
-      router.push("/orders");
+      router.push(successUrl);
     }
   };
 
@@ -328,7 +330,7 @@ function CheckoutContent() {
       }
 
       setTimeout(() => {
-        router.push("/orders");
+        router.push(`/checkout/success?orderId=${orderId}&method=${paymentMethod}&amount=${amount}`);
       }, 2500);
     }, 2000);
   };
@@ -356,7 +358,7 @@ function CheckoutContent() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 md:p-8 pt-[100px] md:pt-[120px] pb-16">
+    <main className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 md:p-8 pt-25 md:pt-30 pb-16">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_40%)] pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.08),transparent_40%)] pointer-events-none" />
 
