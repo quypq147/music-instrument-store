@@ -343,7 +343,7 @@ export default function AdminChatPage() {
         return (
           <div className="space-y-1.5 max-w-full">
             <a href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border border-slate-200/50 bg-white">
-              <img src={url} alt={filename} className="max-w-full max-h-[180px] object-cover hover:scale-[1.02] transition-transform duration-200" />
+              <img src={url} alt={filename} className="max-w-full max-h-45 object-cover hover:scale-[1.02] transition-transform duration-200" />
             </a>
             <span className="text-[9px] opacity-75 truncate block">{filename} ({formatSize(size)})</span>
           </div>
@@ -356,7 +356,7 @@ export default function AdminChatPage() {
           target="_blank"
           rel="noopener noreferrer"
           download={filename}
-          className="flex items-center gap-2.5 p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl transition-colors border border-slate-250 max-w-[280px] group"
+          className="flex items-center gap-2.5 p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl transition-colors border border-slate-250 max-w-70 group"
         >
           <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center text-lg shadow-sm shrink-0">
             {mimeType === "application/pdf" ? "📕" : "📄"}
@@ -451,7 +451,7 @@ export default function AdminChatPage() {
                       {isMine ? (
                         <span className="bg-emerald-100 text-emerald-800 text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0">Bạn hỗ trợ</span>
                       ) : (
-                        <span className="bg-slate-100 text-slate-600 text-[8px] font-medium px-1.5 py-0.5 rounded-full shrink-0 truncate max-w-[80px]">
+                        <span className="bg-slate-100 text-slate-600 text-[8px] font-medium px-1.5 py-0.5 rounded-full shrink-0 truncate max-w-20">
                           {sess.assignedStaffName || "N/A"}
                         </span>
                       )}

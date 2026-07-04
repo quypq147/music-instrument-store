@@ -42,6 +42,7 @@ export function AdminSidebar() {
   const items = [
     { href: "/admin", label: "📊 Tổng Quan", exact: true },
     { href: "/admin/products", label: "🎷 Quản Lý Sản Phẩm" },
+    { href: "/admin/categories", label: "🏷️ Quản Lý Danh Mục" },
     { href: "/admin/orders", label: "📦 Quản Lý Đơn Hàng" },
     { href: "/admin/users", label: "👥 Quản Lý Người Dùng" },
     { href: "/admin/chat", label: "💬 Trò Chuyện (Support)" },
