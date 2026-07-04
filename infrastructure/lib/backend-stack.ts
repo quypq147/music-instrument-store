@@ -497,6 +497,13 @@ export class BackendStack extends cdk.Stack {
       new apigateway.LambdaIntegration(paymentWebhookLambda)
     );
 
+    // Route: /webhooks/momo
+    const momoWebhookResource = webhooksResource.addResource("momo");
+    momoWebhookResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(paymentWebhookLambda)
+    );
+
     new cdk.CfnOutput(this, "ApiUrl", { value: api.url });
     new cdk.CfnOutput(this, "OrderQueueUrl", { value: orderQueue.queueUrl });
     new cdk.CfnOutput(this, "NotificationQueueUrl", { value: notificationQueue.queueUrl });

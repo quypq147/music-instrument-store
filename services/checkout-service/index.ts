@@ -2,9 +2,16 @@ import type { APIGatewayProxyHandler, APIGatewayProxyResult } from "aws-lambda";
 import Stripe from "stripe";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { createHmac } from "crypto";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
 const tableName = process.env.TABLE_NAME || "";
+const momoPartnerCode = process.env.MOMO_PARTNER_CODE || "";
+const momoAccessKey = process.env.MOMO_ACCESS_KEY || "";
+const momoSecretKey = process.env.MOMO_SECRET_KEY || "";
+const momoApiUrl = process.env.MOMO_API_URL || "https://test-payment.momo.vn/v2/gateway/api/create";
+const momoRedirectUrl = process.env.MOMO_REDIRECT_URL || "";
+const momoIpnUrl = process.env.MOMO_IPN_URL || "";
 
 const ddbClient = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
@@ -102,6 +109,87 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
     }
 
+    const mockOrderId = resolvedIdempotencyKey.replace("idemp_", "");
+
+    // -------------------------------------------------------------
+    // Momo Payment Integration
+    // -------------------------------------------------------------
+    if (paymentMethod === "Momo") {
+      const isMockMomo =
+        !momoPartnerCode ||
+        momoPartnerCode === "TO_BE_REPLACED_IN_CONSOLE" ||
+        momoPartnerCode.startsWith("dummy") ||
+        !momoSecretKey;
+
+      if (isMockMomo) {
+        console.log(`Momo keys not configured. Returning mock pay URL. Idempotency Key: ${resolvedIdempotencyKey}`);
+        return jsonResponse(200, {
+          payUrl: `/checkout?orderId=${mockOrderId}&method=Momo&amount=${totalPrice}&isMock=true`,
+          isMock: true,
+          amount: totalPrice,
+          idempotencyKey: resolvedIdempotencyKey,
+        });
+      }
+
+      const extraData = "";
+      const requestType = "captureWallet";
+      const orderInfo = `Thanh toan don hang ${mockOrderId}`;
+      const requestId = `req_${mockOrderId}_${Date.now()}`;
+      
+      const redirectUrl = momoRedirectUrl || `https://${event.headers?.Host || event.headers?.host || "localhost:3000"}/orders`;
+      const ipnUrl = momoIpnUrl || `https://${event.headers?.Host || event.headers?.host || "localhost:3000"}/webhooks/momo`;
+
+      const rawSignature = `accessKey=${momoAccessKey}&amount=${totalPrice}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${mockOrderId}&orderInfo=${orderInfo}&partnerCode=${momoPartnerCode}&redirectUrl=${redirectUrl}&requestId=${requestId}&requestType=${requestType}`;
+      
+      const signature = createHmac("sha256", momoSecretKey)
+        .update(rawSignature)
+        .digest("hex");
+
+      const momoPayload = {
+        partnerCode: momoPartnerCode,
+        partnerName: "Music Store",
+        storeId: "MusicStore",
+        requestId,
+        amount: totalPrice,
+        orderId: mockOrderId,
+        orderInfo,
+        redirectUrl,
+        ipnUrl,
+        lang: "vi",
+        extraData,
+        requestType,
+        signature
+      };
+
+      console.log("Calling Momo API with payload:", JSON.stringify(momoPayload));
+
+      const response = await fetch(momoApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(momoPayload)
+      });
+
+      const momoResult = await response.json();
+      console.log("Momo API response:", JSON.stringify(momoResult));
+
+      if (momoResult.resultCode === 0) {
+        return jsonResponse(200, {
+          payUrl: momoResult.payUrl,
+          isMock: false,
+          amount: totalPrice,
+          idempotencyKey: resolvedIdempotencyKey,
+        });
+      } else {
+        return jsonResponse(400, {
+          message: `Momo API error: ${momoResult.message}`,
+          error: momoResult,
+        });
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Stripe Payment Integration
+    // -------------------------------------------------------------
     // Kiểm tra Stripe Secret Key xem có hợp lệ không
     const isMockStripe =
       !stripeSecretKey ||
@@ -115,7 +203,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         clientSecret: `pi_mock_${resolvedIdempotencyKey}_secret_${Math.random().toString(36).substring(2, 6)}`,
         amount: totalPrice,
         currency: "vnd",
-        paymentMethod: paymentMethod || "Stripe",
+        paymentMethod: "Stripe",
         customer,
         idempotencyKey: resolvedIdempotencyKey,
         isMock: true,
@@ -136,6 +224,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         customerPhone: customer?.phone || "Unknown",
         customerAddress: customer?.address || "Unknown",
         itemsCount: items.length.toString(),
+        orderId: mockOrderId,
       },
     }, {
       idempotencyKey: resolvedIdempotencyKey, // Ngăn chặn thanh toán trùng lặp tại Stripe
@@ -146,7 +235,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       id: paymentIntent.id,
       amount: paymentIntent.amount,
       currency: paymentIntent.currency,
-      paymentMethod: paymentMethod || "Stripe",
+      paymentMethod: "Stripe",
       idempotencyKey: resolvedIdempotencyKey,
     });
   } catch (error) {
