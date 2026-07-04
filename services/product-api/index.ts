@@ -7,6 +7,7 @@ import {
   PutCommand,
   DeleteCommand,
   QueryCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
 
@@ -24,6 +25,12 @@ type ProductItem = {
   updatedAt?: string;
   averageRating?: number;
   ratingCount?: number;
+  viewCount?: number;
+  soldCount?: number;
+  wishlistCount?: number;
+  GSI2PK?: string;
+  GSI2SK?: string;
+  stock?: number;
 };
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -47,7 +54,7 @@ const jsonResponse = (
 
 const stripTableKeys = (item: any) => {
   if (!item) return item;
-  const { PK, SK, pk, sk, createdAt, updatedAt, ...rest } = item;
+  const { PK, SK, pk, sk, createdAt, updatedAt, GSI2PK, GSI2SK, ...rest } = item;
   return rest;
 };
 
@@ -77,6 +84,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const userId = authorizer?.claims?.sub;
     const email = authorizer?.claims?.email;
     const userName = authorizer?.claims?.name || email || authorizer?.claims?.["cognito:username"] || "User";
+
+    // -------------------------------------------------------------
+    // Route: /products/{id}/view
+    // -------------------------------------------------------------
+    if (resource === "/products/{id}/view" && method === "POST") {
+      const productId = getProductId(event.path, event.pathParameters?.id);
+      if (!productId) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+
+      try {
+        const result = await dynamoDb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "METADATA",
+            },
+            UpdateExpression: "ADD viewCount :inc",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: {
+              ":inc": 1,
+            },
+            ReturnValues: "UPDATED_NEW",
+          })
+        );
+
+        return jsonResponse(200, { viewCount: result.Attributes?.viewCount ?? 0 });
+      } catch (err: any) {
+        if (err?.name === "ConditionalCheckFailedException") {
+          return jsonResponse(404, { message: "Sản phẩm không tồn tại" });
+        }
+        throw err;
+      }
+    }
 
     // -------------------------------------------------------------
     // Route: /products/{id}/ratings
@@ -164,6 +206,45 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             },
           })
         );
+
+        // Tính lại rating trung bình và ghi cache lên item METADATA của sản phẩm
+        try {
+          const ratingsResult = await dynamoDb.send(
+            new QueryCommand({
+              TableName: tableName,
+              KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+              ExpressionAttributeValues: {
+                ":pk": `PRODUCT#${productId}`,
+                ":sk": "RATING#",
+              },
+            })
+          );
+          const ratings = ratingsResult.Items ?? [];
+          const newRatingCount = ratings.length;
+          const newAverageRating =
+            newRatingCount > 0
+              ? parseFloat(
+                  (ratings.reduce((acc, r) => acc + (r.rating || 0), 0) / newRatingCount).toFixed(1)
+                )
+              : 0;
+
+          await dynamoDb.send(
+            new UpdateCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "METADATA",
+              },
+              UpdateExpression: "SET averageRating = :avg, ratingCount = :count",
+              ExpressionAttributeValues: {
+                ":avg": newAverageRating,
+                ":count": newRatingCount,
+              },
+            })
+          );
+        } catch (err) {
+          console.error("Failed to cache average rating on product", err);
+        }
 
         return jsonResponse(201, { message: "Đánh giá sản phẩm thành công!" });
       }
@@ -406,7 +487,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Missing request body" });
       }
 
-      const { status } = JSON.parse(event.body);
+      const { status, reason } = JSON.parse(event.body);
       if (!status) {
         return jsonResponse(400, { message: "Status is required" });
       }
@@ -443,6 +524,56 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         })
       );
 
+      // Ghi lại lịch sử thay đổi trạng thái đơn hàng (audit trail)
+      const changedBy =
+        authorizer?.claims?.email ||
+        authorizer?.claims?.name ||
+        authorizer?.claims?.["cognito:username"] ||
+        "SYSTEM";
+      try {
+        await dynamoDb.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: {
+              PK: `ORDER#${targetOrderId}`,
+              SK: `STATUS_HISTORY#${now}`,
+              status,
+              changedBy,
+              reason: reason || "",
+              createdAt: now,
+            },
+          })
+        );
+      } catch (err) {
+        console.error(`Failed to write status history for order ${targetOrderId}`, err);
+      }
+
+      // Khi đơn hàng chuyển sang trạng thái "Đánh giá" (đã giao) lần đầu, cộng dồn soldCount cho từng sản phẩm
+      if (status === "Đánh giá" && order.status !== "Đánh giá") {
+        const items = Array.isArray(order.items) ? order.items : [];
+        for (const item of items) {
+          if (!item?.productId || typeof item?.quantity !== "number") continue;
+          try {
+            await dynamoDb.send(
+              new UpdateCommand({
+                TableName: tableName,
+                Key: {
+                  PK: `PRODUCT#${item.productId}`,
+                  SK: "METADATA",
+                },
+                UpdateExpression: "ADD soldCount :qty",
+                ConditionExpression: "attribute_exists(PK)",
+                ExpressionAttributeValues: {
+                  ":qty": item.quantity,
+                },
+              })
+            );
+          } catch (err) {
+            console.error(`Failed to increment soldCount for product ${item.productId}`, err);
+          }
+        }
+      }
+
       // Gửi sự kiện cập nhật trạng thái đơn hàng sang EventBridge để kích hoạt gửi Mail tự động
       if (eventBusName) {
         try {
@@ -470,6 +601,142 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
 
       return jsonResponse(200, stripTableKeys(updatedOrder));
+    }
+
+    // -------------------------------------------------------------
+    // Route: /orders/{id}/history (GET - Order Status Timeline)
+    // -------------------------------------------------------------
+    if (resource === "/orders/{id}/history" && method === "GET") {
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+
+      const orderResult = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA",
+          },
+        })
+      );
+
+      if (!orderResult.Item) {
+        return jsonResponse(404, { message: "Order not found" });
+      }
+
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      const isOwner = orderResult.Item.userId && orderResult.Item.userId === userId;
+      if (!isStaff && !isOwner) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      const historyResult = await dynamoDb.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+          ExpressionAttributeValues: {
+            ":pk": `ORDER#${targetOrderId}`,
+            ":sk": "STATUS_HISTORY#",
+          },
+        })
+      );
+
+      const history = (historyResult.Items ?? [])
+        .map((item) => stripTableKeys(item))
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+      return jsonResponse(200, history);
+    }
+
+    // -------------------------------------------------------------
+    // Route: /coupons (POST - Admin tạo coupon)
+    // -------------------------------------------------------------
+    if (resource === "/coupons" && method === "POST") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const body = JSON.parse(event.body);
+      const { code, discountType, discountValue, minOrderValue, usageLimit, validFrom, validUntil, isActive } = body;
+
+      if (!code || !discountType || typeof discountValue !== "number") {
+        return jsonResponse(400, { message: "Missing required fields: code, discountType, discountValue" });
+      }
+      if (discountType !== "percentage" && discountType !== "fixed") {
+        return jsonResponse(400, { message: "discountType phải là 'percentage' hoặc 'fixed'" });
+      }
+
+      const now = new Date().toISOString();
+      const coupon = {
+        PK: `COUPON#${code}`,
+        SK: "METADATA",
+        code,
+        discountType,
+        discountValue,
+        minOrderValue: minOrderValue ?? 0,
+        usageLimit: usageLimit ?? null,
+        usageCount: 0,
+        validFrom: validFrom || now,
+        validUntil: validUntil || null,
+        isActive: isActive !== false,
+        createdAt: now,
+      };
+
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: coupon,
+        })
+      );
+
+      return jsonResponse(201, stripTableKeys(coupon));
+    }
+
+    // -------------------------------------------------------------
+    // Route: /coupons/{code} (GET - Validate/preview coupon, public)
+    // -------------------------------------------------------------
+    if (resource === "/coupons/{code}" && method === "GET") {
+      const code = event.pathParameters?.code;
+      if (!code) {
+        return jsonResponse(400, { message: "Missing coupon code" });
+      }
+
+      const result = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `COUPON#${code}`,
+            SK: "METADATA",
+          },
+        })
+      );
+
+      if (!result.Item) {
+        return jsonResponse(404, { message: "Mã giảm giá không tồn tại" });
+      }
+
+      const coupon = result.Item;
+      const now = new Date();
+      const isExpired =
+        (coupon.validFrom && now < new Date(coupon.validFrom)) ||
+        (coupon.validUntil && now > new Date(coupon.validUntil));
+      const isExhausted =
+        typeof coupon.usageLimit === "number" && coupon.usageCount >= coupon.usageLimit;
+
+      if (!coupon.isActive || isExpired || isExhausted) {
+        return jsonResponse(400, { message: "Mã giảm giá không còn hiệu lực", valid: false });
+      }
+
+      return jsonResponse(200, { valid: true, coupon: stripTableKeys(coupon) });
     }
 
     // -------------------------------------------------------------
@@ -623,6 +890,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         const product = productRes.Item as ProductItem;
         const now = new Date().toISOString();
 
+        // Kiểm tra đã có trong wishlist chưa để tránh cộng dồn wishlistCount nhiều lần
+        const existingWishlistItem = await dynamoDb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: `WISHLIST#${productId}`,
+            },
+          })
+        );
+
         await dynamoDb.send(
           new PutCommand({
             TableName: tableName,
@@ -639,6 +917,26 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             },
           })
         );
+
+        if (!existingWishlistItem.Item) {
+          try {
+            await dynamoDb.send(
+              new UpdateCommand({
+                TableName: tableName,
+                Key: {
+                  PK: `PRODUCT#${productId}`,
+                  SK: "METADATA",
+                },
+                UpdateExpression: "ADD wishlistCount :inc",
+                ExpressionAttributeValues: {
+                  ":inc": 1,
+                },
+              })
+            );
+          } catch (err) {
+            console.error(`Failed to increment wishlistCount for product ${productId}`, err);
+          }
+        }
 
         return jsonResponse(201, { message: "Đã thêm sản phẩm vào danh sách yêu thích!" });
       }
@@ -658,15 +956,40 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           return jsonResponse(400, { message: "Missing productId in path" });
         }
 
-        await dynamoDb.send(
+        const deleted = await dynamoDb.send(
           new DeleteCommand({
             TableName: tableName,
             Key: {
               PK: `USER#${userId}`,
               SK: `WISHLIST#${targetProductId}`,
             },
+            ReturnValues: "ALL_OLD",
           })
         );
+
+        if (deleted.Attributes) {
+          try {
+            await dynamoDb.send(
+              new UpdateCommand({
+                TableName: tableName,
+                Key: {
+                  PK: `PRODUCT#${targetProductId}`,
+                  SK: "METADATA",
+                },
+                UpdateExpression: "ADD wishlistCount :dec",
+                ConditionExpression: "attribute_exists(PK) AND wishlistCount > :zero",
+                ExpressionAttributeValues: {
+                  ":dec": -1,
+                  ":zero": 0,
+                },
+              })
+            );
+          } catch (err) {
+            if ((err as any)?.name !== "ConditionalCheckFailedException") {
+              console.error(`Failed to decrement wishlistCount for product ${targetProductId}`, err);
+            }
+          }
+        }
 
         return jsonResponse(200, { message: "Đã xóa sản phẩm khỏi danh sách yêu thích" });
       }
@@ -694,64 +1017,108 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           return jsonResponse(404, { message: "Product not found" });
         }
 
-        // Tính trung bình rating và số lượt đánh giá
-        let averageRating = 0;
-        let ratingCount = 0;
-        try {
-          const ratingsResult = await dynamoDb.send(
-            new QueryCommand({
-              TableName: tableName,
-              KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-              ExpressionAttributeValues: {
-                ":pk": `PRODUCT#${productId}`,
-                ":sk": "RATING#",
-              },
-            })
-          );
-          const ratings = ratingsResult.Items ?? [];
-          ratingCount = ratings.length;
-          if (ratingCount > 0) {
-            const sum = ratings.reduce((acc, r) => acc + (r.rating || 0), 0);
-            averageRating = parseFloat((sum / ratingCount).toFixed(1));
-          }
-        } catch (err) {
-          console.error("Failed to fetch ratings for average calculation", err);
-        }
+        const inventoryResult = await dynamoDb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY",
+            },
+          })
+        );
+        const stock = inventoryResult.Item?.stock;
 
         const product = stripTableKeys(result.Item as ProductItem);
         return jsonResponse(200, {
           product: {
             ...product,
-            averageRating,
-            ratingCount,
+            averageRating: product.averageRating ?? 0,
+            ratingCount: product.ratingCount ?? 0,
+            viewCount: product.viewCount ?? 0,
+            soldCount: product.soldCount ?? 0,
+            wishlistCount: product.wishlistCount ?? 0,
+            stock: stock ?? null,
+            inStock: stock === undefined ? true : stock > 0,
           },
         });
       }
 
       const items: ProductItem[] = [];
       let ExclusiveStartKey: Record<string, unknown> | undefined;
+      const category = event.queryStringParameters?.category;
 
       do {
         const result = await dynamoDb.send(
-          new ScanCommand({
-            TableName: tableName,
-            FilterExpression: "begins_with(#pk, :productPrefix)",
-            ExpressionAttributeNames: {
-              "#pk": "PK",
-            },
-            ExpressionAttributeValues: {
-              ":productPrefix": "PRODUCT#",
-            },
-            ExclusiveStartKey,
-          })
+          category
+            ? new QueryCommand({
+                TableName: tableName,
+                IndexName: "GSI2",
+                KeyConditionExpression: "GSI2PK = :gsi2pk",
+                ExpressionAttributeValues: {
+                  ":gsi2pk": `TYPE#${category}`,
+                },
+                ExclusiveStartKey,
+              })
+            : new ScanCommand({
+                TableName: tableName,
+                FilterExpression: "begins_with(#pk, :productPrefix) AND #sk = :metadataSk",
+                ExpressionAttributeNames: {
+                  "#pk": "PK",
+                  "#sk": "SK",
+                },
+                ExpressionAttributeValues: {
+                  ":productPrefix": "PRODUCT#",
+                  ":metadataSk": "METADATA",
+                },
+                ExclusiveStartKey,
+              })
         );
 
         items.push(...((result.Items ?? []) as ProductItem[]));
         ExclusiveStartKey = result.LastEvaluatedKey;
       } while (ExclusiveStartKey);
 
+      // Lấy tồn kho của tất cả sản phẩm trong 1 lượt Scan riêng để tránh N+1 query
+      const stockByProductId = new Map<string, number>();
+      let inventoryStartKey: Record<string, unknown> | undefined;
+      do {
+        const inventoryResult = await dynamoDb.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(#pk, :productPrefix) AND #sk = :inventorySk",
+            ExpressionAttributeNames: {
+              "#pk": "PK",
+              "#sk": "SK",
+            },
+            ExpressionAttributeValues: {
+              ":productPrefix": "PRODUCT#",
+              ":inventorySk": "INVENTORY",
+            },
+            ExclusiveStartKey: inventoryStartKey,
+          })
+        );
+        for (const item of inventoryResult.Items ?? []) {
+          const pid = String(item.PK).replace("PRODUCT#", "");
+          stockByProductId.set(pid, item.stock);
+        }
+        inventoryStartKey = inventoryResult.LastEvaluatedKey;
+      } while (inventoryStartKey);
+
       const products = items
-        .map((item) => stripTableKeys(item))
+        .map((item) => {
+          const stripped = stripTableKeys(item);
+          const stock = stockByProductId.get(String(stripped.id));
+          return {
+            ...stripped,
+            averageRating: stripped.averageRating ?? 0,
+            ratingCount: stripped.ratingCount ?? 0,
+            viewCount: stripped.viewCount ?? 0,
+            soldCount: stripped.soldCount ?? 0,
+            wishlistCount: stripped.wishlistCount ?? 0,
+            stock: stock ?? null,
+            inStock: stock === undefined ? true : stock > 0,
+          };
+        })
         .sort((a, b) => Number(a.id) - Number(b.id));
 
       return jsonResponse(200, products);
@@ -783,6 +1150,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         description,
         createdAt: now,
         updatedAt: now,
+        ...(type ? { GSI2PK: `TYPE#${type}`, GSI2SK: `PRODUCT#${id}` } : {}),
       };
 
       await dynamoDb.send(
@@ -806,7 +1174,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
 
       const body = JSON.parse(event.body) as Partial<ProductItem>;
-      
+
       // Get existing product to update
       const existing = await dynamoDb.send(
         new GetCommand({
@@ -822,14 +1190,34 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(404, { message: "Product not found" });
       }
 
+      // Chỉ cho phép client cập nhật các field thông tin sản phẩm cơ bản;
+      // các field denormalize (rating/view/sold/wishlist/GSI2) không bao giờ bị ghi đè từ body.
+      const allowedFields: (keyof ProductItem)[] = [
+        "name",
+        "brand",
+        "type",
+        "price",
+        "imageUrl",
+        "description",
+      ];
+      const sanitizedBody: Partial<ProductItem> = {};
+      for (const field of allowedFields) {
+        if (body[field] !== undefined) {
+          (sanitizedBody as any)[field] = body[field];
+        }
+      }
+
       const now = new Date().toISOString();
+      const existingProduct = existing.Item as ProductItem;
+      const newType = sanitizedBody.type ?? existingProduct.type;
       const updatedItem: ProductItem = {
-        ...(existing.Item as ProductItem),
-        ...body,
+        ...existingProduct,
+        ...sanitizedBody,
         PK: `PRODUCT#${productId}`,
         SK: "METADATA",
         id: productId,
         updatedAt: now,
+        ...(newType ? { GSI2PK: `TYPE#${newType}`, GSI2SK: `PRODUCT#${productId}` } : {}),
       };
 
       await dynamoDb.send(

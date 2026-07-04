@@ -16,7 +16,10 @@ export default async function Home() {
     { name: "Yanagisawa", slogan: "MASTERPIECE OF JAPAN" },
     { name: "Jupiter", slogan: "PLAY. INSPIRE. CREATE." }
   ];
-  const featuredProducts = products.slice(0, 4);
+  const hasViewData = products.some((p) => (p.viewCount || 0) > 0);
+  const featuredProducts = hasViewData
+    ? [...products].sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 4)
+    : products.slice(0, 4);
   const bucketName = process.env.S3_BUCKET_NAME || "cdk-hnb659fds-assets-112613858653-ap-southeast-1";
   const s3BaseUrl = `https://${bucketName}.s3.ap-southeast-1.amazonaws.com`;
 

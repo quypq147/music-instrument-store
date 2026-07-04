@@ -22,4 +22,6 @@ export interface Order {
   totalPrice?: number;
   status: string;
   createdAt: string;
+  couponCode?: string;
+  discountAmount?: number;
 }

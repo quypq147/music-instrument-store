@@ -1,6 +1,8 @@
 import type { APIGatewayProxyHandler, APIGatewayProxyResult } from "aws-lambda";
 import { randomUUID } from "node:crypto";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 type OrderCustomer = {
   name: string;
@@ -23,10 +25,13 @@ type CreateOrderRequest = {
   paymentMethod: string;
   userId?: string;
   email?: string;
+  couponCode?: string;
 };
 
 const sqs = new SQSClient({});
 const queueUrl = process.env.ORDER_QUEUE_URL;
+const tableName = process.env.TABLE_NAME;
+const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": process.env.CORS_ALLOW_ORIGIN ?? "*",
@@ -110,7 +115,78 @@ const parseRequest = (body: string | null): CreateOrderRequest => {
     paymentMethod: parsed.paymentMethod,
     userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
     email: typeof parsed.email === "string" ? parsed.email : undefined,
+    couponCode: typeof parsed.couponCode === "string" && parsed.couponCode.trim() ? parsed.couponCode.trim() : undefined,
   };
+};
+
+class CouponError extends Error {}
+
+// Validate và áp dụng coupon, tăng usageCount atomically để chặn race condition vượt usageLimit.
+// Trả về số tiền được giảm (VND); ném CouponError nếu mã không hợp lệ.
+const applyCoupon = async (couponCode: string, totalPrice: number): Promise<number> => {
+  if (!tableName) {
+    throw new CouponError("Hệ thống chưa cấu hình để áp dụng mã giảm giá.");
+  }
+
+  const result = await dynamoDb.send(
+    new GetCommand({
+      TableName: tableName,
+      Key: {
+        PK: `COUPON#${couponCode}`,
+        SK: "METADATA",
+      },
+    })
+  );
+
+  const coupon = result.Item;
+  if (!coupon) {
+    throw new CouponError("Mã giảm giá không tồn tại.");
+  }
+
+  const now = new Date();
+  const isExpired =
+    (coupon.validFrom && now < new Date(coupon.validFrom)) ||
+    (coupon.validUntil && now > new Date(coupon.validUntil));
+  const isExhausted = typeof coupon.usageLimit === "number" && coupon.usageCount >= coupon.usageLimit;
+
+  if (!coupon.isActive || isExpired || isExhausted) {
+    throw new CouponError("Mã giảm giá không còn hiệu lực.");
+  }
+
+  if (coupon.minOrderValue && totalPrice < coupon.minOrderValue) {
+    throw new CouponError(`Đơn hàng cần tối thiểu ${coupon.minOrderValue.toLocaleString("vi-VN")}đ để áp dụng mã này.`);
+  }
+
+  const discountAmount =
+    coupon.discountType === "percentage"
+      ? Math.round((totalPrice * coupon.discountValue) / 100)
+      : Math.min(coupon.discountValue, totalPrice);
+
+  try {
+    await dynamoDb.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: {
+          PK: `COUPON#${couponCode}`,
+          SK: "METADATA",
+        },
+        UpdateExpression: "ADD usageCount :one",
+        ConditionExpression:
+          "attribute_not_exists(usageLimit) OR usageLimit = :nullVal OR usageCount < usageLimit",
+        ExpressionAttributeValues: {
+          ":one": 1,
+          ":nullVal": null,
+        },
+      })
+    );
+  } catch (err: any) {
+    if (err?.name === "ConditionalCheckFailedException") {
+      throw new CouponError("Mã giảm giá đã hết lượt sử dụng.");
+    }
+    throw err;
+  }
+
+  return discountAmount;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -131,10 +207,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const now = new Date().toISOString();
     const orderId = `ord_${Date.now()}_${randomUUID().slice(0, 8)}`;
     const totalItems = request.items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = request.items.reduce(
+    const subtotal = request.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
+
+    let discountAmount = 0;
+    if (request.couponCode) {
+      try {
+        discountAmount = await applyCoupon(request.couponCode, subtotal);
+      } catch (err) {
+        if (err instanceof CouponError) {
+          return jsonResponse(400, { message: err.message });
+        }
+        throw err;
+      }
+    }
+
+    const totalPrice = subtotal - discountAmount;
 
     const order = {
       PK: `ORDER#${orderId}`,
@@ -146,6 +236,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       items: request.items,
       totalItems,
       totalPrice,
+      couponCode: request.couponCode,
+      discountAmount,
       paymentMethod: request.paymentMethod,
       status: "PENDING",
       createdAt: now,
@@ -165,6 +257,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       status: order.status,
       totalItems,
       totalPrice,
+      discountAmount,
     });
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof Error) {

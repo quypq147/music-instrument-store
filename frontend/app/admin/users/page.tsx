@@ -36,7 +36,10 @@ export default function AdminUsersPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        const customersOnly = (data || []).filter((u: AdminUser) => u.role !== "Admin" && u.role !== "Staff");
+        const customersOnly = (data || []).filter((u: AdminUser) => {
+          const role = u.role?.toLowerCase();
+          return role !== "admin" && role !== "staff";
+        });
         setUsersList(customersOnly);
       }
     } catch (error) {

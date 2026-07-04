@@ -24,9 +24,13 @@ export function ProductCard({ product }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isWishlisted, setIsWishlisted] = useState(false);
 
+  const isOutOfStock = product.inStock === false;
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (isOutOfStock) return;
 
     addToCart({
       id: Number(product.id),
@@ -53,9 +57,8 @@ export function ProductCard({ product }: ProductCardProps) {
     }
   };
 
-  // Generate a mock random review count based on product ID safely
-  const idNum = parseInt(String(product.id).replace(/\D/g, '')) || 0;
-  const mockReviewCount = 12 + (idNum % 30);
+  const averageRating = product.averageRating || 0;
+  const ratingCount = product.ratingCount || 0;
 
   return (
     <article 
@@ -78,7 +81,13 @@ export function ProductCard({ product }: ProductCardProps) {
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
         </div>
-        
+
+        {isOutOfStock && (
+          <span className="absolute top-4 left-4 z-10 bg-slate-800/85 text-white text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full">
+            Hết hàng
+          </span>
+        )}
+
         {/* Wishlist Heart */}
         <button
           onClick={handleWishlist}
@@ -100,15 +109,27 @@ export function ProductCard({ product }: ProductCardProps) {
           </h3>
         </Link>
 
-        {/* Mock Rating */}
+        {/* Rating */}
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex text-[#DF9E47]">
-            {[...Array(4)].map((_, i) => (
-              <Star key={i} width="12" height="12" fill="currentColor" stroke="none" />
-            ))}
-            <Star width="12" height="12" fill="currentColor" stroke="none" className="opacity-50" />
-          </div>
-          <span className="text-[11px] text-gray-500 dark:text-emerald-100/50">({mockReviewCount} đánh giá)</span>
+          {ratingCount > 0 ? (
+            <>
+              <div className="flex text-[#DF9E47]">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    width="12"
+                    height="12"
+                    fill={star <= Math.round(averageRating) ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  />
+                ))}
+              </div>
+              <span className="text-[11px] text-gray-500 dark:text-emerald-100/50">({ratingCount} đánh giá)</span>
+            </>
+          ) : (
+            <span className="text-[11px] text-gray-400 dark:text-emerald-100/40">Chưa có đánh giá</span>
+          )}
         </div>
 
         <div className="mt-auto flex items-end justify-between">
@@ -119,9 +140,10 @@ export function ProductCard({ product }: ProductCardProps) {
           <button
             type="button"
             onClick={handleAddToCart}
-            className="w-10 h-10 rounded-lg bg-primary text-white hover:bg-primary-container dark:bg-secondary dark:text-[#002B1F] dark:hover:bg-secondary-container transition-colors flex items-center justify-center"
-            title="Thêm vào giỏ hàng"
-            aria-label="Thêm vào giỏ hàng"
+            disabled={isOutOfStock}
+            className="w-10 h-10 rounded-lg bg-primary text-white hover:bg-primary-container dark:bg-secondary dark:text-[#002B1F] dark:hover:bg-secondary-container transition-colors flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
+            title={isOutOfStock ? "Hết hàng" : "Thêm vào giỏ hàng"}
+            aria-label={isOutOfStock ? "Hết hàng" : "Thêm vào giỏ hàng"}
           >
             <ShoppingCart width="18" height="18" />
           </button>

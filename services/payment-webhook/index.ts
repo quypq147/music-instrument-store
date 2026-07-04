@@ -13,6 +13,9 @@ const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const stripeSignatureToleranceSeconds = 300;
 const tableName = process.env.TABLE_NAME || "";
 
+const momoSecretKey = process.env.MOMO_SECRET_KEY || "";
+const momoAccessKey = process.env.MOMO_ACCESS_KEY || "";
+
 const ddbClient = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
@@ -91,118 +94,216 @@ const verifyStripeSignature = (
   );
 };
 
+const verifyMomoSignature = (payload: any, secretKey: string, accessKey: string) => {
+  const {
+    amount,
+    extraData,
+    message,
+    orderId,
+    orderInfo,
+    partnerCode,
+    requestId,
+    responseTime,
+    resultCode,
+    transId,
+    signature,
+  } = payload;
+
+  const rawSignature = `accessKey=${accessKey}&amount=${amount}&extraData=${extraData}&message=${message}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${partnerCode}&requestId=${requestId}&responseTime=${responseTime}&resultCode=${resultCode}&transId=${transId}`;
+
+  const expectedSignature = createHmac("sha256", secretKey)
+    .update(rawSignature)
+    .digest("hex");
+
+  return signature === expectedSignature;
+};
+
+const processOrderPaymentSuccess = async (orderId: string, paymentMethod: string, rawPayload: any) => {
+  if (!tableName) return;
+  
+  console.log(`[Webhook] Processing successful payment for order: ${orderId} via ${paymentMethod}`);
+  
+  // 1. Update order status to "Chờ lấy đơn" in DynamoDB
+  try {
+    await ddbDocClient.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: {
+          PK: `ORDER#${orderId}`,
+          SK: "METADATA",
+        },
+        UpdateExpression: "SET #status = :status, updatedAt = :now",
+        ExpressionAttributeNames: {
+          "#status": "status",
+        },
+        ExpressionAttributeValues: {
+          ":status": "Chờ lấy đơn",
+          ":now": new Date().toISOString(),
+        },
+      })
+    );
+    console.log(`[Webhook] Successfully updated status for order ${orderId} to "Chờ lấy đơn"`);
+  } catch (err) {
+    console.error(`[Webhook] Failed to update order status for ${orderId}:`, err);
+  }
+
+  // 2. Release inventory reservation (reduce reserved, since stock has already been deducted at checkout)
+  try {
+    const getOrderResult = await ddbDocClient.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: {
+          PK: `ORDER#${orderId}`,
+          SK: "METADATA",
+        },
+      })
+    );
+    
+    const order = getOrderResult.Item;
+    if (order && Array.isArray(order.items)) {
+      for (const item of order.items) {
+        const productId = String(item.productId);
+        const qty = item.quantity || 1;
+        
+        console.log(`[Webhook] Deducting reserved count for product ${productId} by ${qty}`);
+        await ddbDocClient.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY",
+            },
+            UpdateExpression: "SET reserved = reserved - :qty",
+            ExpressionAttributeValues: {
+              ":qty": qty,
+            },
+          })
+        );
+      }
+    } else {
+      console.warn(`[Webhook] Order ${orderId} not found in DB or has no items. Skipping reservation release.`);
+    }
+  } catch (err) {
+    console.error(`[Webhook] Failed to release inventory reservation for order ${orderId}:`, err);
+  }
+
+  // 3. Publish Event to EventBridge (triggers notification services)
+  if (eventBusName) {
+    try {
+      await eventBridge.send(
+        new PutEventsCommand({
+          Entries: [
+            {
+              EventBusName: eventBusName,
+              Source: "com.musicstore.payment",
+              DetailType: "PaymentSucceeded",
+              Detail: JSON.stringify({
+                id: orderId,
+                amount: rawPayload.amount ?? rawPayload.amountPaid ?? 0,
+                metadata: {
+                  orderId,
+                  paymentMethod,
+                },
+                rawPayload,
+              }),
+            },
+          ],
+        })
+      );
+      console.log(`[Webhook] Published PaymentSucceeded event for order ${orderId}`);
+    } catch (err) {
+      console.error(`[Webhook] Failed to publish EventBridge event for order ${orderId}:`, err);
+    }
+  }
+};
+
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     if (!eventBusName) {
       throw new Error("EVENT_BUS_NAME environment variable is not set");
     }
 
-    if (!stripeWebhookSecret) {
-      throw new Error("STRIPE_WEBHOOK_SECRET environment variable is not set");
-    }
-
     if (event.httpMethod !== "POST") {
       return jsonResponse(405, { message: "Method Not Allowed" });
     }
 
-    if (event.path !== "/webhooks/stripe") {
-      return jsonResponse(404, { message: "Route not found" });
-    }
+    const path = event.path || "";
 
-    const signature =
-      event.headers["stripe-signature"] ?? event.headers["Stripe-Signature"];
-
-    // TODO: Verify the raw request body with Stripe using signature and stripeWebhookSecret.
-    if (!signature) {
-      return jsonResponse(400, { message: "Missing Stripe signature" });
-    }
-
-    if (!event.body) {
-      return jsonResponse(400, { message: "Missing webhook body" });
-    }
-
-    const rawBody = getRawBody(event.body, event.isBase64Encoded);
-
-    if (!verifyStripeSignature(rawBody, signature, stripeWebhookSecret)) {
-      return jsonResponse(400, { message: "Invalid Stripe signature" });
-    }
-
-    const payload = JSON.parse(rawBody);
-
-    if (payload.type !== "checkout.session.completed") {
-      return jsonResponse(200, { received: true, ignored: true });
-    }
-
-    const orderInfo = payload.data?.object ?? payload;
-
-    // Giải phóng số lượng giữ chỗ (reserved) sau khi thanh toán thành công
-    const orderId = orderInfo.metadata?.orderId || orderInfo.client_reference_id;
-    if (orderId && tableName) {
-      try {
-        console.log(`Releasing inventory reservation for order: ${orderId}`);
-        const getOrderResult = await ddbDocClient.send(
-          new GetCommand({
-            TableName: tableName,
-            Key: {
-              PK: `ORDER#${orderId}`,
-              SK: "METADATA",
-            },
-          })
-        );
-        
-        const order = getOrderResult.Item;
-        if (order && Array.isArray(order.items)) {
-          for (const item of order.items) {
-            const productId = String(item.productId);
-            const qty = item.quantity || 1;
-            
-            console.log(`Deducting reserved count for product ${productId} by ${qty}`);
-            await ddbDocClient.send(
-              new UpdateCommand({
-                TableName: tableName,
-                Key: {
-                  PK: `PRODUCT#${productId}`,
-                  SK: "INVENTORY",
-                },
-                UpdateExpression: "SET reserved = reserved - :qty",
-                ExpressionAttributeValues: {
-                  ":qty": qty,
-                },
-              })
-            );
-          }
-        } else {
-          console.warn(`Order ${orderId} not found in DB or has no items. Skipping reservation release.`);
-        }
-      } catch (err) {
-        console.error(`Failed to release inventory reservation for order ${orderId}:`, err);
+    // -------------------------------------------------------------
+    // Route: /webhooks/stripe
+    // -------------------------------------------------------------
+    if (path.includes("/stripe")) {
+      if (!stripeWebhookSecret) {
+        throw new Error("STRIPE_WEBHOOK_SECRET environment variable is not set");
       }
+
+      const signature = event.headers["stripe-signature"] ?? event.headers["Stripe-Signature"];
+      if (!signature) {
+        return jsonResponse(400, { message: "Missing Stripe signature" });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing webhook body" });
+      }
+
+      const rawBody = getRawBody(event.body, event.isBase64Encoded);
+      if (!verifyStripeSignature(rawBody, signature, stripeWebhookSecret)) {
+        return jsonResponse(400, { message: "Invalid Stripe signature" });
+      }
+
+      const payload = JSON.parse(rawBody);
+      console.log(`[Stripe Webhook] Received event type: ${payload.type}`);
+
+      // Support both checkout.session.completed and payment_intent.succeeded
+      if (payload.type === "checkout.session.completed") {
+        const session = payload.data?.object;
+        const orderId = session.metadata?.orderId || session.client_reference_id;
+        if (orderId) {
+          await processOrderPaymentSuccess(orderId, "Stripe", session);
+        }
+      } else if (payload.type === "payment_intent.succeeded") {
+        const paymentIntent = payload.data?.object;
+        const orderId = paymentIntent.metadata?.orderId;
+        if (orderId) {
+          await processOrderPaymentSuccess(orderId, "Stripe", paymentIntent);
+        }
+      }
+
+      return jsonResponse(200, { received: true });
     }
 
-    const result = await eventBridge.send(
-      new PutEventsCommand({
-        Entries: [
-          {
-            EventBusName: eventBusName,
-            Source: "com.musicstore.payment",
-            DetailType: "PaymentSucceeded",
-            Detail: JSON.stringify(orderInfo),
-          },
-        ],
-      })
-    );
+    // -------------------------------------------------------------
+    // Route: /webhooks/momo
+    // -------------------------------------------------------------
+    if (path.includes("/momo")) {
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing webhook body" });
+      }
 
-    const failedEntryCount = result.FailedEntryCount ?? 0;
+      const rawBody = getRawBody(event.body, event.isBase64Encoded);
+      const payload = JSON.parse(rawBody);
+      console.log("[Momo Webhook] Received payload:", JSON.stringify(payload));
 
-    if (failedEntryCount > 0) {
-      throw new Error(
-        `EventBridge PutEvents failed for ${failedEntryCount} entr${
-          failedEntryCount === 1 ? "y" : "ies"
-        }`
-      );
+      const isMockMomo = !momoSecretKey || momoSecretKey.startsWith("dummy");
+      if (!isMockMomo) {
+        if (!verifyMomoSignature(payload, momoSecretKey, momoAccessKey)) {
+          return jsonResponse(400, { message: "Invalid Momo signature" });
+        }
+      } else {
+        console.log("[Momo Webhook] Running in mock/offline mode. Skipping signature verification.");
+      }
+
+      const { orderId, resultCode } = payload;
+      if (orderId && Number(resultCode) === 0) {
+        await processOrderPaymentSuccess(orderId, "Momo", payload);
+      } else {
+        console.warn(`[Momo Webhook] Payment failed or orderId missing: orderId=${orderId}, resultCode=${resultCode}`);
+      }
+
+      return jsonResponse(200, { received: true });
     }
 
-    return jsonResponse(200, { received: true });
+    return jsonResponse(404, { message: "Route not found" });
   } catch (error) {
     console.error("Payment webhook handler failed", {
       error,

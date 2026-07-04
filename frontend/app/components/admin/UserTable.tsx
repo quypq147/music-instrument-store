@@ -96,14 +96,14 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
                     <td className="p-4">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
-                          user.role === "Admin"
+                          user.role?.toLowerCase() === "admin"
                             ? "bg-rose-50 text-rose-600"
-                            : user.role === "Staff"
+                            : user.role?.toLowerCase() === "staff"
                             ? "bg-amber-50 text-amber-700"
                             : "bg-emerald-50 text-emerald-700"
                         }`}
                       >
-                        {user.role === "Admin" ? "Quản trị viên" : user.role === "Staff" ? "Nhân viên" : "Khách hàng"}
+                        {user.role?.toLowerCase() === "admin" ? "Quản trị viên" : user.role?.toLowerCase() === "staff" ? "Nhân viên" : "Khách hàng"}
                       </span>
                     </td>
                     <td className="p-4 text-right">

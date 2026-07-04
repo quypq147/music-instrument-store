@@ -79,6 +79,10 @@ export function ProductBrowserClient({
       result = [...result].sort((a, b) => a.price - b.price);
     } else if (sort === "price-desc") {
       result = [...result].sort((a, b) => b.price - a.price);
+    } else if (sort === "rating-desc") {
+      result = [...result].sort((a, b) => (b.averageRating || 0) - (a.averageRating || 0));
+    } else if (sort === "views-desc") {
+      result = [...result].sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0));
     }
 
     return result;
@@ -201,6 +205,8 @@ export function ProductBrowserClient({
                 <option value="default" className="bg-white dark:bg-[#06261d]">Sắp xếp mặc định</option>
                 <option value="price-asc" className="bg-white dark:bg-[#06261d]">Giá: Thấp đến Cao</option>
                 <option value="price-desc" className="bg-white dark:bg-[#06261d]">Giá: Cao đến Thấp</option>
+                <option value="rating-desc" className="bg-white dark:bg-[#06261d]">Đánh giá cao nhất</option>
+                <option value="views-desc" className="bg-white dark:bg-[#06261d]">Xem nhiều nhất</option>
               </select>
               <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" width="16" height="16" />
             </div>

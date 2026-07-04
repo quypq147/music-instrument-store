@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@aws-amplify/auth": "^6.20.0",
+    "@aws-sdk/client-dynamodb": "^3.1079.0",
     "@aws-sdk/client-lambda": "^3.1075.0",
     "@aws-sdk/client-lex-runtime-v2": "^3.1075.0",
+    "@aws-sdk/lib-dynamodb": "^3.1079.0",
     "@music-store/shared-types": "0.1.0",
     "@stripe/react-stripe-js": "^6.6.0",
     "@stripe/stripe-js": "^9.8.0",

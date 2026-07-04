@@ -1,9 +1,23 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Phone } from "lucide-react";
 
 export default function FloatingContacts() {
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setIsChatOpen(customEvent.detail?.isOpen || false);
+    };
+    window.addEventListener("chat-widget-toggle", handleToggle);
+    return () => window.removeEventListener("chat-widget-toggle", handleToggle);
+  }, []);
+
+  if (isChatOpen) return null;
+
   return (
     <div style={{ position: 'fixed', bottom: '100px', right: '30px', display: 'flex', flexDirection: 'column', gap: '15px', zIndex: 9999 }}>
       {/* Phone */}

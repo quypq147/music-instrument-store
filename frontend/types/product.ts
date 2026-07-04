@@ -8,4 +8,9 @@ export interface Product {
   description: string;
   averageRating?: number;
   ratingCount?: number;
+  viewCount?: number;
+  soldCount?: number;
+  wishlistCount?: number;
+  stock?: number | null;
+  inStock?: boolean;
 }

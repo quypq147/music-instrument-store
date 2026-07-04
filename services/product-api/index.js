@@ -41,7 +41,7 @@ var jsonResponse = (statusCode, body) => ({
 });
 var stripTableKeys = (item) => {
   if (!item) return item;
-  const { PK, SK, pk, sk, createdAt, updatedAt, ...rest } = item;
+  const { PK, SK, pk, sk, createdAt, updatedAt, GSI2PK, GSI2SK, ...rest } = item;
   return rest;
 };
 var getProductId = (path, pathId) => {
@@ -65,6 +65,35 @@ var handler = async (event) => {
     const userId = authorizer?.claims?.sub;
     const email = authorizer?.claims?.email;
     const userName = authorizer?.claims?.name || email || authorizer?.claims?.["cognito:username"] || "User";
+    if (resource === "/products/{id}/view" && method === "POST") {
+      const productId2 = getProductId(event.path, event.pathParameters?.id);
+      if (!productId2) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+      try {
+        const result = await dynamoDb.send(
+          new import_lib_dynamodb.UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId2}`,
+              SK: "METADATA"
+            },
+            UpdateExpression: "ADD viewCount :inc",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: {
+              ":inc": 1
+            },
+            ReturnValues: "UPDATED_NEW"
+          })
+        );
+        return jsonResponse(200, { viewCount: result.Attributes?.viewCount ?? 0 });
+      } catch (err) {
+        if (err?.name === "ConditionalCheckFailedException") {
+          return jsonResponse(404, { message: "S\u1EA3n ph\u1EA9m kh\xF4ng t\u1ED3n t\u1EA1i" });
+        }
+        throw err;
+      }
+    }
     if (resource === "/products/{id}/ratings") {
       const productId2 = getProductId(event.path, event.pathParameters?.id);
       if (!productId2) {
@@ -138,6 +167,39 @@ var handler = async (event) => {
             }
           })
         );
+        try {
+          const ratingsResult = await dynamoDb.send(
+            new import_lib_dynamodb.QueryCommand({
+              TableName: tableName,
+              KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+              ExpressionAttributeValues: {
+                ":pk": `PRODUCT#${productId2}`,
+                ":sk": "RATING#"
+              }
+            })
+          );
+          const ratings = ratingsResult.Items ?? [];
+          const newRatingCount = ratings.length;
+          const newAverageRating = newRatingCount > 0 ? parseFloat(
+            (ratings.reduce((acc, r) => acc + (r.rating || 0), 0) / newRatingCount).toFixed(1)
+          ) : 0;
+          await dynamoDb.send(
+            new import_lib_dynamodb.UpdateCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId2}`,
+                SK: "METADATA"
+              },
+              UpdateExpression: "SET averageRating = :avg, ratingCount = :count",
+              ExpressionAttributeValues: {
+                ":avg": newAverageRating,
+                ":count": newRatingCount
+              }
+            })
+          );
+        } catch (err) {
+          console.error("Failed to cache average rating on product", err);
+        }
         return jsonResponse(201, { message: "\u0110\xE1nh gi\xE1 s\u1EA3n ph\u1EA9m th\xE0nh c\xF4ng!" });
       }
     }
@@ -328,7 +390,7 @@ var handler = async (event) => {
       if (!event.body) {
         return jsonResponse(400, { message: "Missing request body" });
       }
-      const { status } = JSON.parse(event.body);
+      const { status, reason } = JSON.parse(event.body);
       if (!status) {
         return jsonResponse(400, { message: "Status is required" });
       }
@@ -357,6 +419,48 @@ var handler = async (event) => {
           Item: updatedOrder
         })
       );
+      const changedBy = authorizer?.claims?.email || authorizer?.claims?.name || authorizer?.claims?.["cognito:username"] || "SYSTEM";
+      try {
+        await dynamoDb.send(
+          new import_lib_dynamodb.PutCommand({
+            TableName: tableName,
+            Item: {
+              PK: `ORDER#${targetOrderId}`,
+              SK: `STATUS_HISTORY#${now}`,
+              status,
+              changedBy,
+              reason: reason || "",
+              createdAt: now
+            }
+          })
+        );
+      } catch (err) {
+        console.error(`Failed to write status history for order ${targetOrderId}`, err);
+      }
+      if (status === "\u0110\xE1nh gi\xE1" && order.status !== "\u0110\xE1nh gi\xE1") {
+        const items = Array.isArray(order.items) ? order.items : [];
+        for (const item of items) {
+          if (!item?.productId || typeof item?.quantity !== "number") continue;
+          try {
+            await dynamoDb.send(
+              new import_lib_dynamodb.UpdateCommand({
+                TableName: tableName,
+                Key: {
+                  PK: `PRODUCT#${item.productId}`,
+                  SK: "METADATA"
+                },
+                UpdateExpression: "ADD soldCount :qty",
+                ConditionExpression: "attribute_exists(PK)",
+                ExpressionAttributeValues: {
+                  ":qty": item.quantity
+                }
+              })
+            );
+          } catch (err) {
+            console.error(`Failed to increment soldCount for product ${item.productId}`, err);
+          }
+        }
+      }
       if (eventBusName) {
         try {
           console.log(`Publishing OrderUpdated event for order ${targetOrderId} to ${eventBusName}...`);
@@ -382,6 +486,108 @@ var handler = async (event) => {
         }
       }
       return jsonResponse(200, stripTableKeys(updatedOrder));
+    }
+    if (resource === "/orders/{id}/history" && method === "GET") {
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+      const orderResult = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA"
+          }
+        })
+      );
+      if (!orderResult.Item) {
+        return jsonResponse(404, { message: "Order not found" });
+      }
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      const isOwner = orderResult.Item.userId && orderResult.Item.userId === userId;
+      if (!isStaff && !isOwner) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      const historyResult = await dynamoDb.send(
+        new import_lib_dynamodb.QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+          ExpressionAttributeValues: {
+            ":pk": `ORDER#${targetOrderId}`,
+            ":sk": "STATUS_HISTORY#"
+          }
+        })
+      );
+      const history = (historyResult.Items ?? []).map((item) => stripTableKeys(item)).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      return jsonResponse(200, history);
+    }
+    if (resource === "/coupons" && method === "POST") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const body = JSON.parse(event.body);
+      const { code, discountType, discountValue, minOrderValue, usageLimit, validFrom, validUntil, isActive } = body;
+      if (!code || !discountType || typeof discountValue !== "number") {
+        return jsonResponse(400, { message: "Missing required fields: code, discountType, discountValue" });
+      }
+      if (discountType !== "percentage" && discountType !== "fixed") {
+        return jsonResponse(400, { message: "discountType ph\u1EA3i l\xE0 'percentage' ho\u1EB7c 'fixed'" });
+      }
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const coupon = {
+        PK: `COUPON#${code}`,
+        SK: "METADATA",
+        code,
+        discountType,
+        discountValue,
+        minOrderValue: minOrderValue ?? 0,
+        usageLimit: usageLimit ?? null,
+        usageCount: 0,
+        validFrom: validFrom || now,
+        validUntil: validUntil || null,
+        isActive: isActive !== false,
+        createdAt: now
+      };
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: coupon
+        })
+      );
+      return jsonResponse(201, stripTableKeys(coupon));
+    }
+    if (resource === "/coupons/{code}" && method === "GET") {
+      const code = event.pathParameters?.code;
+      if (!code) {
+        return jsonResponse(400, { message: "Missing coupon code" });
+      }
+      const result = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `COUPON#${code}`,
+            SK: "METADATA"
+          }
+        })
+      );
+      if (!result.Item) {
+        return jsonResponse(404, { message: "M\xE3 gi\u1EA3m gi\xE1 kh\xF4ng t\u1ED3n t\u1EA1i" });
+      }
+      const coupon = result.Item;
+      const now = /* @__PURE__ */ new Date();
+      const isExpired = coupon.validFrom && now < new Date(coupon.validFrom) || coupon.validUntil && now > new Date(coupon.validUntil);
+      const isExhausted = typeof coupon.usageLimit === "number" && coupon.usageCount >= coupon.usageLimit;
+      if (!coupon.isActive || isExpired || isExhausted) {
+        return jsonResponse(400, { message: "M\xE3 gi\u1EA3m gi\xE1 kh\xF4ng c\xF2n hi\u1EC7u l\u1EF1c", valid: false });
+      }
+      return jsonResponse(200, { valid: true, coupon: stripTableKeys(coupon) });
     }
     if (resource === "/users" || resource === "/users/{userId}") {
       const groups = authorizer?.claims?.["cognito:groups"] || "";
@@ -505,6 +711,15 @@ var handler = async (event) => {
         }
         const product = productRes.Item;
         const now = (/* @__PURE__ */ new Date()).toISOString();
+        const existingWishlistItem = await dynamoDb.send(
+          new import_lib_dynamodb.GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: `WISHLIST#${productId2}`
+            }
+          })
+        );
         await dynamoDb.send(
           new import_lib_dynamodb.PutCommand({
             TableName: tableName,
@@ -521,6 +736,25 @@ var handler = async (event) => {
             }
           })
         );
+        if (!existingWishlistItem.Item) {
+          try {
+            await dynamoDb.send(
+              new import_lib_dynamodb.UpdateCommand({
+                TableName: tableName,
+                Key: {
+                  PK: `PRODUCT#${productId2}`,
+                  SK: "METADATA"
+                },
+                UpdateExpression: "ADD wishlistCount :inc",
+                ExpressionAttributeValues: {
+                  ":inc": 1
+                }
+              })
+            );
+          } catch (err) {
+            console.error(`Failed to increment wishlistCount for product ${productId2}`, err);
+          }
+        }
         return jsonResponse(201, { message: "\u0110\xE3 th\xEAm s\u1EA3n ph\u1EA9m v\xE0o danh s\xE1ch y\xEAu th\xEDch!" });
       }
     }
@@ -533,15 +767,39 @@ var handler = async (event) => {
         if (!targetProductId) {
           return jsonResponse(400, { message: "Missing productId in path" });
         }
-        await dynamoDb.send(
+        const deleted = await dynamoDb.send(
           new import_lib_dynamodb.DeleteCommand({
             TableName: tableName,
             Key: {
               PK: `USER#${userId}`,
               SK: `WISHLIST#${targetProductId}`
-            }
+            },
+            ReturnValues: "ALL_OLD"
           })
         );
+        if (deleted.Attributes) {
+          try {
+            await dynamoDb.send(
+              new import_lib_dynamodb.UpdateCommand({
+                TableName: tableName,
+                Key: {
+                  PK: `PRODUCT#${targetProductId}`,
+                  SK: "METADATA"
+                },
+                UpdateExpression: "ADD wishlistCount :dec",
+                ConditionExpression: "attribute_exists(PK) AND wishlistCount > :zero",
+                ExpressionAttributeValues: {
+                  ":dec": -1,
+                  ":zero": 0
+                }
+              })
+            );
+          } catch (err) {
+            if (err?.name !== "ConditionalCheckFailedException") {
+              console.error(`Failed to decrement wishlistCount for product ${targetProductId}`, err);
+            }
+          }
+        }
         return jsonResponse(200, { message: "\u0110\xE3 x\xF3a s\u1EA3n ph\u1EA9m kh\u1ECFi danh s\xE1ch y\xEAu th\xEDch" });
       }
     }
@@ -560,49 +818,53 @@ var handler = async (event) => {
         if (!result.Item) {
           return jsonResponse(404, { message: "Product not found" });
         }
-        let averageRating = 0;
-        let ratingCount = 0;
-        try {
-          const ratingsResult = await dynamoDb.send(
-            new import_lib_dynamodb.QueryCommand({
-              TableName: tableName,
-              KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-              ExpressionAttributeValues: {
-                ":pk": `PRODUCT#${productId}`,
-                ":sk": "RATING#"
-              }
-            })
-          );
-          const ratings = ratingsResult.Items ?? [];
-          ratingCount = ratings.length;
-          if (ratingCount > 0) {
-            const sum = ratings.reduce((acc, r) => acc + (r.rating || 0), 0);
-            averageRating = parseFloat((sum / ratingCount).toFixed(1));
-          }
-        } catch (err) {
-          console.error("Failed to fetch ratings for average calculation", err);
-        }
+        const inventoryResult = await dynamoDb.send(
+          new import_lib_dynamodb.GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY"
+            }
+          })
+        );
+        const stock = inventoryResult.Item?.stock;
         const product = stripTableKeys(result.Item);
         return jsonResponse(200, {
           product: {
             ...product,
-            averageRating,
-            ratingCount
+            averageRating: product.averageRating ?? 0,
+            ratingCount: product.ratingCount ?? 0,
+            viewCount: product.viewCount ?? 0,
+            soldCount: product.soldCount ?? 0,
+            wishlistCount: product.wishlistCount ?? 0,
+            stock: stock ?? null,
+            inStock: stock === void 0 ? true : stock > 0
           }
         });
       }
       const items = [];
       let ExclusiveStartKey;
+      const category = event.queryStringParameters?.category;
       do {
         const result = await dynamoDb.send(
-          new import_lib_dynamodb.ScanCommand({
+          category ? new import_lib_dynamodb.QueryCommand({
             TableName: tableName,
-            FilterExpression: "begins_with(#pk, :productPrefix)",
+            IndexName: "GSI2",
+            KeyConditionExpression: "GSI2PK = :gsi2pk",
+            ExpressionAttributeValues: {
+              ":gsi2pk": `TYPE#${category}`
+            },
+            ExclusiveStartKey
+          }) : new import_lib_dynamodb.ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(#pk, :productPrefix) AND #sk = :metadataSk",
             ExpressionAttributeNames: {
-              "#pk": "PK"
+              "#pk": "PK",
+              "#sk": "SK"
             },
             ExpressionAttributeValues: {
-              ":productPrefix": "PRODUCT#"
+              ":productPrefix": "PRODUCT#",
+              ":metadataSk": "METADATA"
             },
             ExclusiveStartKey
           })
@@ -610,7 +872,44 @@ var handler = async (event) => {
         items.push(...result.Items ?? []);
         ExclusiveStartKey = result.LastEvaluatedKey;
       } while (ExclusiveStartKey);
-      const products = items.map((item) => stripTableKeys(item)).sort((a, b) => Number(a.id) - Number(b.id));
+      const stockByProductId = /* @__PURE__ */ new Map();
+      let inventoryStartKey;
+      do {
+        const inventoryResult = await dynamoDb.send(
+          new import_lib_dynamodb.ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(#pk, :productPrefix) AND #sk = :inventorySk",
+            ExpressionAttributeNames: {
+              "#pk": "PK",
+              "#sk": "SK"
+            },
+            ExpressionAttributeValues: {
+              ":productPrefix": "PRODUCT#",
+              ":inventorySk": "INVENTORY"
+            },
+            ExclusiveStartKey: inventoryStartKey
+          })
+        );
+        for (const item of inventoryResult.Items ?? []) {
+          const pid = String(item.PK).replace("PRODUCT#", "");
+          stockByProductId.set(pid, item.stock);
+        }
+        inventoryStartKey = inventoryResult.LastEvaluatedKey;
+      } while (inventoryStartKey);
+      const products = items.map((item) => {
+        const stripped = stripTableKeys(item);
+        const stock = stockByProductId.get(String(stripped.id));
+        return {
+          ...stripped,
+          averageRating: stripped.averageRating ?? 0,
+          ratingCount: stripped.ratingCount ?? 0,
+          viewCount: stripped.viewCount ?? 0,
+          soldCount: stripped.soldCount ?? 0,
+          wishlistCount: stripped.wishlistCount ?? 0,
+          stock: stock ?? null,
+          inStock: stock === void 0 ? true : stock > 0
+        };
+      }).sort((a, b) => Number(a.id) - Number(b.id));
       return jsonResponse(200, products);
     }
     if (method === "POST") {
@@ -634,7 +933,8 @@ var handler = async (event) => {
         imageUrl,
         description,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
+        ...type ? { GSI2PK: `TYPE#${type}`, GSI2SK: `PRODUCT#${id}` } : {}
       };
       await dynamoDb.send(
         new import_lib_dynamodb.PutCommand({
@@ -664,14 +964,31 @@ var handler = async (event) => {
       if (!existing.Item) {
         return jsonResponse(404, { message: "Product not found" });
       }
+      const allowedFields = [
+        "name",
+        "brand",
+        "type",
+        "price",
+        "imageUrl",
+        "description"
+      ];
+      const sanitizedBody = {};
+      for (const field of allowedFields) {
+        if (body[field] !== void 0) {
+          sanitizedBody[field] = body[field];
+        }
+      }
       const now = (/* @__PURE__ */ new Date()).toISOString();
+      const existingProduct = existing.Item;
+      const newType = sanitizedBody.type ?? existingProduct.type;
       const updatedItem = {
-        ...existing.Item,
-        ...body,
+        ...existingProduct,
+        ...sanitizedBody,
         PK: `PRODUCT#${productId}`,
         SK: "METADATA",
         id: productId,
-        updatedAt: now
+        updatedAt: now,
+        ...newType ? { GSI2PK: `TYPE#${newType}`, GSI2SK: `PRODUCT#${productId}` } : {}
       };
       await dynamoDb.send(
         new import_lib_dynamodb.PutCommand({

@@ -10,6 +10,7 @@ import { useTheme } from "../context/ThemeContext";
 import { fetchAuthSession, getCurrentUser, updatePassword } from "aws-amplify/auth";
 import AddressSelector from "../components/address/AddressSelector";
 import { OrderCard } from "../components/order/OrderCard";
+import { OrderDetailsModal } from "../components/order/OrderDetailsModal";
 import type { Order } from "../../types/cart";
 import MusicLoading from "../components/common/MusicLoading";
 
@@ -62,7 +63,7 @@ const currencyFormatter = new Intl.NumberFormat("vi-VN", {
 });
 
 const inputClasses =
-  "w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-800 text-sm outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all bg-white";
+  "w-full px-4 py-3 border border-slate-200 dark:border-emerald-900/40 rounded-xl text-slate-800 dark:text-emerald-50 text-sm outline-none focus:border-[#002B1F] dark:focus:border-secondary focus:shadow-[0_0_0_1px_#002B1F] dark:focus:shadow-[0_0_0_1px_#DF9E47] transition-all bg-white dark:bg-[#031d16]";
 
 export default function ProfilePage() {
   const { showToast } = useToast();
@@ -72,6 +73,7 @@ export default function ProfilePage() {
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<"profile" | "wishlist" | "orders" | "settings">("profile");
+  const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
 
   // Settings Tab States
   const [oldPassword, setOldPassword] = useState("");
@@ -278,7 +280,7 @@ export default function ProfilePage() {
 
   if (isAuthenticated === null) {
     return (
-      <main className="min-h-[60vh] flex justify-center items-center bg-slate-50">
+      <main className="min-h-[60vh] flex justify-center items-center bg-slate-50 dark:bg-[#02140f] transition-colors duration-300">
         <MusicLoading message="Xác thực tài khoản..." height="150px" />
       </main>
     );
@@ -286,15 +288,15 @@ export default function ProfilePage() {
 
   if (isAuthenticated === false) {
     return (
-      <main className="min-h-[65vh] flex justify-center items-center bg-slate-50 p-6">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-md text-center border border-slate-100">
+      <main className="min-h-[65vh] flex justify-center items-center bg-slate-50 dark:bg-[#02140f] p-6 transition-colors duration-300">
+        <div className="bg-white dark:bg-[#06261d] rounded-2xl p-8 max-w-md w-full shadow-md text-center border border-slate-100 dark:border-primary-container/20">
           <span className="text-5xl block mb-4">🔒</span>
-          <h1 className="font-serif text-2xl text-[#002B1F] mb-2">Đăng Nhập Để Tiếp Tục</h1>
-          <p className="text-slate-600 mb-6 leading-relaxed">
+          <h1 className="font-serif text-2xl text-[#002B1F] dark:text-[#80bea6] mb-2">Đăng Nhập Để Tiếp Tục</h1>
+          <p className="text-slate-600 dark:text-emerald-100/70 mb-6 leading-relaxed">
             Vui lòng đăng nhập để xem thông tin tài khoản, danh sách sản phẩm yêu thích và lịch sử mua sắm.
           </p>
           <Link href="/login">
-            <button className="w-full bg-[#002B1F] hover:bg-[#054030] text-white font-semibold py-3 rounded-xl transition-all shadow-sm">
+            <button className="w-full bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-semibold py-3 rounded-xl transition-all shadow-sm cursor-pointer">
               Đăng Nhập
             </button>
           </Link>
@@ -311,18 +313,18 @@ export default function ProfilePage() {
   ];
 
   return (
-    <main className="bg-slate-50 min-h-screen pt-28 pb-12 px-4">
+    <main className="bg-surface-cream dark:bg-[#02140f] min-h-screen pt-28 pb-12 px-4 transition-colors duration-300">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row gap-8">
 
           {/* Sidebar */}
-          <aside className="w-full md:w-1/4 bg-white rounded-2xl p-6 shadow-sm border border-slate-100 h-fit">
-            <div className="text-center mb-6 pb-6 border-b border-slate-100">
-              <div className="w-20 h-20 bg-[#F3EFEA] rounded-full flex items-center justify-center text-3xl font-extrabold text-[#002B1F] mx-auto mb-3 border border-[#DF9E47]/20">
+          <aside className="w-full md:w-1/4 bg-white dark:bg-[#06261d] rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-primary-container/20 h-fit transition-colors duration-300">
+            <div className="text-center mb-6 pb-6 border-b border-slate-100 dark:border-primary-container/20">
+              <div className="w-20 h-20 bg-[#F3EFEA] dark:bg-[#031d16] rounded-full flex items-center justify-center text-3xl font-extrabold text-[#002B1F] dark:text-[#80bea6] mx-auto mb-3 border border-[#DF9E47]/20 dark:border-[#fe932c]/20">
                 {profile?.name ? profile.name.charAt(0).toUpperCase() : "U"}
               </div>
-              <h2 className="font-serif text-lg text-[#002B1F]">{profile?.name || "Thành viên"}</h2>
-              <p className="text-xs text-slate-400 mt-1">{profile?.email}</p>
+              <h2 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6]">{profile?.name || "Thành viên"}</h2>
+              <p className="text-xs text-slate-400 dark:text-emerald-100/50 mt-1">{profile?.email}</p>
             </div>
 
             <nav className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible -mx-2 px-2 md:mx-0 md:px-0 pb-1 md:pb-0">
@@ -330,10 +332,10 @@ export default function ProfilePage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-2.5 md:py-3 rounded-full md:rounded-xl font-semibold text-xs md:text-sm transition-all text-left whitespace-nowrap ${
+                  className={`shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-2.5 md:py-3 rounded-full md:rounded-xl font-semibold text-xs md:text-sm transition-all text-left whitespace-nowrap cursor-pointer ${
                     activeTab === tab.id
-                      ? "bg-[#002B1F] text-white shadow-sm"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      ? "bg-[#002B1F] dark:bg-secondary text-white dark:text-[#002B1F] shadow-sm"
+                      : "text-slate-600 dark:text-emerald-100/70 hover:bg-slate-50 dark:hover:bg-[#031d16] hover:text-slate-900 dark:hover:text-emerald-50"
                   }`}
                 >
                   {tab.label}
@@ -343,32 +345,32 @@ export default function ProfilePage() {
           </aside>
 
           {/* Content */}
-          <section className="flex-1 bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100 overflow-hidden">
+          <section className="flex-1 bg-white dark:bg-[#06261d] rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100 dark:border-primary-container/20 overflow-hidden transition-colors duration-300">
             {isLoadingData ? (
               <MusicLoading message="Đang tải dữ liệu..." height="300px" />
             ) : (
               <div key={activeTab} className="profile-tab-fade">
                 {activeTab === "profile" ? (
                   <div>
-                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                    <h2 className="font-serif text-xl text-[#002B1F] dark:text-[#80bea6] mb-6 pb-2 border-b border-slate-100 dark:border-primary-container/20">
                       Thông Tin Cá Nhân
                     </h2>
 
                     <form onSubmit={handleUpdateProfile} className="space-y-6 max-w-xl">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                          <label className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 uppercase tracking-wider mb-2">
                             Email
                           </label>
                           <input
                             type="email"
                             disabled
                             value={profile?.email || ""}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-400 text-sm cursor-not-allowed focus:outline-none"
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-[#002117]/50 border border-slate-200 dark:border-emerald-900/30 rounded-xl text-slate-400 dark:text-emerald-200/40 text-sm cursor-not-allowed focus:outline-none"
                           />
                         </div>
                         <div>
-                          <label htmlFor="name" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                          <label htmlFor="name" className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 uppercase tracking-wider mb-2">
                             Họ và Tên
                           </label>
                           <input
@@ -384,7 +386,7 @@ export default function ProfilePage() {
                       </div>
 
                       <div>
-                        <label htmlFor="phone" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                        <label htmlFor="phone" className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 uppercase tracking-wider mb-2">
                           Số Điện Thoại
                         </label>
                         <input
@@ -399,7 +401,7 @@ export default function ProfilePage() {
                       </div>
 
                       <div>
-                        <label htmlFor="address" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                        <label htmlFor="address" className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 uppercase tracking-wider mb-2">
                           Địa chỉ nhận hàng mặc định
                         </label>
                         <AddressSelector
@@ -412,7 +414,7 @@ export default function ProfilePage() {
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="bg-[#002B1F] hover:bg-[#054030] text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm active:scale-[0.98] disabled:opacity-60"
+                        className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-semibold px-8 py-3 rounded-xl transition-all text-sm active:scale-[0.98] disabled:opacity-60 cursor-pointer"
                       >
                         {isSubmitting ? "Đang lưu..." : "Cập Nhật Thông Tin"}
                       </button>
@@ -420,16 +422,16 @@ export default function ProfilePage() {
                   </div>
                 ) : activeTab === "wishlist" ? (
                   <div>
-                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                    <h2 className="font-serif text-xl text-[#002B1F] dark:text-[#80bea6] mb-6 pb-2 border-b border-slate-100 dark:border-primary-container/20">
                       Sản Phẩm Yêu Thích Của Bạn
                     </h2>
 
                     {wishlist.length === 0 ? (
-                      <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <div className="text-center py-12 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-dashed border-slate-200 dark:border-primary-container/20">
                         <span className="text-4xl block mb-3">❤️</span>
-                        <p className="text-sm text-slate-500 mb-4">Danh sách sản phẩm yêu thích đang trống.</p>
+                        <p className="text-sm text-slate-500 dark:text-emerald-100/50 mb-4">Danh sách sản phẩm yêu thích đang trống.</p>
                         <Link href="/products">
-                          <button className="bg-[#002B1F] hover:bg-[#054030] text-white text-xs font-bold px-4 py-2.5 rounded-lg">
+                          <button className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] text-xs font-bold px-4 py-2.5 rounded-lg cursor-pointer">
                             Khám phá sản phẩm ngay
                           </button>
                         </Link>
@@ -440,10 +442,10 @@ export default function ProfilePage() {
                           <Link
                             key={item.productId}
                             href={`/product/${item.productId}`}
-                            className="group flex flex-col justify-between bg-white border border-gray-100 rounded-2xl overflow-hidden hover:border-[#DF9E47]/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
+                            className="group flex flex-col justify-between bg-white dark:bg-[#031d16] border border-gray-100 dark:border-primary-container/20 rounded-2xl overflow-hidden hover:border-[#DF9E47]/30 dark:hover:border-secondary/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
                           >
                             <div className="p-4 flex-1">
-                              <div className="relative w-full aspect-square bg-[#F3EFEA] rounded-xl overflow-hidden mb-4">
+                              <div className="relative w-full aspect-square bg-[#F3EFEA] dark:bg-[#06261d] rounded-xl overflow-hidden mb-4">
                                 <Image
                                   src={item.imageUrl}
                                   alt={item.name}
@@ -451,24 +453,24 @@ export default function ProfilePage() {
                                   className="object-contain p-4 group-hover:scale-105 transition-transform duration-500"
                                 />
                               </div>
-                              <span className="text-[10px] uppercase font-bold text-[#A36B2B] tracking-widest">
+                              <span className="text-[10px] uppercase font-bold text-[#A36B2B] dark:text-secondary tracking-widest">
                                 {item.brand}
                               </span>
-                              <h3 className="font-serif text-slate-800 text-base font-semibold group-hover:text-[#A36B2B] transition-colors line-clamp-2 mt-1">
+                              <h3 className="font-serif text-slate-800 dark:text-emerald-50 text-base font-semibold group-hover:text-[#A36B2B] dark:group-hover:text-secondary transition-colors line-clamp-2 mt-1">
                                 {item.name}
                               </h3>
-                              <p className="font-extrabold text-[#A36B2B] text-sm mt-2">
+                              <p className="font-extrabold text-[#A36B2B] dark:text-secondary text-sm mt-2">
                                 {currencyFormatter.format(item.price)}
                               </p>
                             </div>
-                            <div className="p-4 border-t border-gray-100 bg-[#F3EFEA]/40 flex justify-between items-center">
+                            <div className="p-4 border-t border-gray-100 dark:border-primary-container/20 bg-[#F3EFEA]/40 dark:bg-[#06261d]/40 flex justify-between items-center">
                               <button
                                 onClick={(e) => handleRemoveFromWishlist(item.productId, e)}
-                                className="text-xs text-rose-600 hover:text-rose-700 font-semibold hover:underline"
+                                className="text-xs text-rose-600 dark:text-rose-455 hover:text-rose-700 dark:hover:text-rose-400 font-semibold hover:underline cursor-pointer"
                               >
                                 Xóa khỏi yêu thích
                               </button>
-                              <span className="text-xs text-[#002B1F] font-bold group-hover:underline">
+                              <span className="text-xs text-[#002B1F] dark:text-[#80bea6] font-bold group-hover:underline">
                                 Xem chi tiết →
                               </span>
                             </div>
@@ -479,16 +481,16 @@ export default function ProfilePage() {
                   </div>
                 ) : activeTab === "orders" ? (
                   <div>
-                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                    <h2 className="font-serif text-xl text-[#002B1F] dark:text-[#80bea6] mb-6 pb-2 border-b border-slate-100 dark:border-primary-container/20">
                       Đơn Hàng Đã Mua
                     </h2>
 
                     {orders.length === 0 ? (
-                      <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <div className="text-center py-12 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-dashed border-slate-200 dark:border-primary-container/20">
                         <span className="text-4xl block mb-3">📦</span>
-                        <p className="text-sm text-slate-500 mb-4">Bạn chưa có đơn hàng nào.</p>
+                        <p className="text-sm text-slate-500 dark:text-emerald-100/50 mb-4">Bạn chưa có đơn hàng nào.</p>
                         <Link href="/products">
-                          <button className="bg-[#002B1F] hover:bg-[#054030] text-white text-xs font-bold px-4 py-2.5 rounded-lg">
+                          <button className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] text-xs font-bold px-4 py-2.5 rounded-lg cursor-pointer">
                             Khám phá sản phẩm ngay
                           </button>
                         </Link>
@@ -496,25 +498,30 @@ export default function ProfilePage() {
                     ) : (
                       <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
                         {orders.map((order) => (
-                          <OrderCard key={order.id} order={order} />
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            showSummaryOnly={true}
+                            onViewDetails={() => setSelectedDetailOrder(order)}
+                          />
                         ))}
                       </div>
                     )}
                   </div>
                 ) : (
                   <div>
-                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                    <h2 className="font-serif text-xl text-[#002B1F] dark:text-[#80bea6] mb-6 pb-2 border-b border-slate-100 dark:border-primary-container/20">
                       Cài Đặt Tài Khoản
                     </h2>
 
                     {/* Section 1: Change Password */}
                     <div className="mb-8">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-emerald-100/80 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <span>🔑</span> Đổi mật khẩu
                       </h3>
-                      <form onSubmit={handleChangePassword} className="space-y-4 max-w-md bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                      <form onSubmit={handleChangePassword} className="space-y-4 max-w-md bg-slate-50 dark:bg-[#031d16] p-6 rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-colors duration-300">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-2">Mật khẩu hiện tại</label>
+                          <label className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 mb-2">Mật khẩu hiện tại</label>
                           <input
                             type="password"
                             required
@@ -524,7 +531,7 @@ export default function ProfilePage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-2">Mật khẩu mới</label>
+                          <label className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 mb-2">Mật khẩu mới</label>
                           <input
                             type="password"
                             required
@@ -534,7 +541,7 @@ export default function ProfilePage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-2">Xác nhận mật khẩu mới</label>
+                          <label className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 mb-2">Xác nhận mật khẩu mới</label>
                           <input
                             type="password"
                             required
@@ -546,7 +553,7 @@ export default function ProfilePage() {
                         <button
                           type="submit"
                           disabled={isChangingPassword}
-                          className="bg-[#002B1F] hover:bg-[#054030] text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-xs active:scale-[0.98] disabled:opacity-60"
+                          className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-semibold px-6 py-2.5 rounded-xl transition-all text-xs active:scale-[0.98] disabled:opacity-60 cursor-pointer"
                         >
                           {isChangingPassword ? "Đang cập nhật..." : "Cập Nhật Mật Khẩu"}
                         </button>
@@ -554,15 +561,15 @@ export default function ProfilePage() {
                     </div>
 
                     {/* Section 2: Notifications */}
-                    <div className="mb-8 border-t border-slate-100 pt-6">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <div className="mb-8 border-t border-slate-100 dark:border-primary-container/20 pt-6">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-emerald-100/80 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <span>🔔</span> Cấu hình nhận thông báo
                       </h3>
                       <div className="space-y-4 max-w-xl">
-                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-colors duration-300">
                           <div>
-                            <h4 className="text-sm font-bold text-slate-800">Thông báo đơn hàng</h4>
-                            <p className="text-xs text-slate-500">Nhận thông báo qua email khi trạng thái đơn hàng thay đổi</p>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Thông báo đơn hàng</h4>
+                            <p className="text-xs text-slate-500 dark:text-emerald-100/50">Nhận thông báo qua email khi trạng thái đơn hàng thay đổi</p>
                           </div>
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
@@ -571,14 +578,14 @@ export default function ProfilePage() {
                               onChange={(e) => setNotificationPrefs({ ...notificationPrefs, emailOrder: e.target.checked })}
                               className="sr-only peer"
                             />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F]"></div>
+                            <div className="w-11 h-6 bg-slate-200 dark:bg-[#002117] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 dark:after:border-emerald-900/40 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F] dark:peer-checked:bg-secondary"></div>
                           </label>
                         </div>
 
-                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-colors duration-300">
                           <div>
-                            <h4 className="text-sm font-bold text-slate-800">Cập nhật giao hàng qua SMS</h4>
-                            <p className="text-xs text-slate-500">Nhận tin nhắn SMS trực tiếp về hành trình vận chuyển đơn hàng</p>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Cập nhật giao hàng qua SMS</h4>
+                            <p className="text-xs text-slate-500 dark:text-emerald-100/50">Nhận tin nhắn SMS trực tiếp về hành trình vận chuyển đơn hàng</p>
                           </div>
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
@@ -587,14 +594,14 @@ export default function ProfilePage() {
                               onChange={(e) => setNotificationPrefs({ ...notificationPrefs, smsShipping: e.target.checked })}
                               className="sr-only peer"
                             />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F]"></div>
+                            <div className="w-11 h-6 bg-slate-200 dark:bg-[#002117] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 dark:after:border-emerald-900/40 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F] dark:peer-checked:bg-secondary"></div>
                           </label>
                         </div>
 
-                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-colors duration-300">
                           <div>
-                            <h4 className="text-sm font-bold text-slate-800">Email khuyến mãi & sự kiện</h4>
-                            <p className="text-xs text-slate-500">Cập nhật các chương trình ưu đãi, giảm giá và nhạc cụ mới</p>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Email khuyến mãi & sự kiện</h4>
+                            <p className="text-xs text-slate-500 dark:text-emerald-100/50">Cập nhật các chương trình ưu đãi, giảm giá và nhạc cụ mới</p>
                           </div>
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
@@ -603,15 +610,15 @@ export default function ProfilePage() {
                               onChange={(e) => setNotificationPrefs({ ...notificationPrefs, emailPromo: e.target.checked })}
                               className="sr-only peer"
                             />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F]"></div>
+                            <div className="w-11 h-6 bg-slate-200 dark:bg-[#002117] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 dark:after:border-emerald-900/40 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F] dark:peer-checked:bg-secondary"></div>
                           </label>
                         </div>
                       </div>
                     </div>
 
                     {/* Section 3: Interface & Language */}
-                    <div className="border-t border-slate-100 pt-6">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <div className="border-t border-slate-100 dark:border-primary-container/20 pt-6">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-emerald-100/80 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <span>⚙️</span> Tùy chọn hiển thị
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
@@ -636,6 +643,12 @@ export default function ProfilePage() {
 
         </div>
       </div>
+
+      <OrderDetailsModal
+        isOpen={selectedDetailOrder !== null}
+        order={selectedDetailOrder}
+        onClose={() => setSelectedDetailOrder(null)}
+      />
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes profileTabFade {

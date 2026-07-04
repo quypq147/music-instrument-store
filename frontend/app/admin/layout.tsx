@@ -19,8 +19,50 @@ export default function AdminLayout({
       try {
         const session = await fetchAuthSession();
         const groups = session.tokens?.idToken?.payload["cognito:groups"] as string[] | undefined;
-        if (groups && (groups.includes("Admin") || groups.includes("Staff"))) {
+        const idToken = session.tokens?.idToken;
+        const email = idToken?.payload["email"] as string | undefined;
+        const name = (idToken?.payload["name"] || idToken?.payload["cognito:username"]) as string | undefined;
+        const userId = idToken?.payload["sub"] as string | undefined;
+
+        let determinedRole = "User";
+        if (groups) {
+          if (groups.includes("Admin")) determinedRole = "Admin";
+          else if (groups.includes("Staff")) determinedRole = "Staff";
+        }
+
+        if (determinedRole === "Admin" || determinedRole === "Staff") {
           setIsAuthorized(true);
+
+          // Proactively initialize/sync staff/admin profile in DynamoDB
+          if (userId) {
+            try {
+              const token = idToken?.toString();
+              const profileRes = await fetch("/api/users/profile", {
+                headers: { Authorization: token ? `Bearer ${token}` : "" }
+              });
+              if (profileRes.ok) {
+                const { profile } = await profileRes.json();
+                if (!profile || profile.role !== determinedRole) {
+                  await fetch(`/api/admin/users/${userId}`, {
+                    method: "PUT",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: token ? `Bearer ${token}` : ""
+                    },
+                    body: JSON.stringify({
+                      name: profile?.name || name || "Support Staff",
+                      phone: profile?.phone || "",
+                      address: profile?.address || "",
+                      role: determinedRole,
+                      email: email || ""
+                    })
+                  });
+                }
+              }
+            } catch (profileErr) {
+              console.error("Auto-sync profile failed:", profileErr);
+            }
+          }
         } else {
           setIsAuthorized(false);
         }

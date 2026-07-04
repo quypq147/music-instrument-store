@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
-import { Heart, Star, ChevronRight } from "lucide-react";
+import { Heart, Star, ChevronRight, Eye } from "lucide-react";
 
 import { useCart } from "../../../context/CartContext";
 import { useToast } from "../../../context/ToastContext";
@@ -76,6 +76,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [averageRating, setAverageRating] = useState(product.averageRating || 0);
   const [ratingCount, setRatingCount] = useState(product.ratingCount || 0);
+  const [viewCount, setViewCount] = useState(product.viewCount || 0);
 
   // Comments State
   const [comments, setComments] = useState<Comment[]>([]);
@@ -170,10 +171,28 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     checkUser();
     fetchRatingsAndComments();
     fetchRelatedProducts();
+
+    // Ghi nhận lượt xem, chỉ 1 lần mỗi session cho mỗi sản phẩm
+    const viewedKey = `viewed_${product.id}`;
+    if (!sessionStorage.getItem(viewedKey)) {
+      sessionStorage.setItem(viewedKey, "1");
+      fetch(`/api/products/${product.id}/view`, { method: "POST" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (typeof data?.viewCount === "number") {
+            setViewCount(data.viewCount);
+          }
+        })
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
 
+  const isOutOfStock = product.inStock === false;
+
   const handleAddToCart = () => {
+    if (isOutOfStock) return;
+
     addToCart({
       id: Number(product.id),
       name: product.name,
@@ -375,6 +394,14 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                     <span className="text-slate-500 dark:text-emerald-100/50 font-normal">({averageRating} / 5, {ratingCount} đánh giá)</span>
                   </div>
                 )}
+
+                {/* View count */}
+                {viewCount > 0 && (
+                  <div className="flex items-center gap-1 text-sm text-slate-500 dark:text-emerald-100/50">
+                    <Eye width={14} height={14} />
+                    <span>{viewCount} lượt xem</span>
+                  </div>
+                )}
               </div>
               <h2 className="text-2xl font-bold text-slate-800 dark:text-emerald-50 mb-4">{product.name}</h2>
               <p className="text-3xl font-extrabold text-[#A36B2B] mb-4">
@@ -392,7 +419,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                   </p>
                 ) : null}
                 <p>
-                  <strong>Tình trạng:</strong> <span className="text-primary font-semibold">Còn hàng</span>
+                  <strong>Tình trạng:</strong>{" "}
+                  {isOutOfStock ? (
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold">Hết hàng</span>
+                  ) : (
+                    <span className="text-primary font-semibold">Còn hàng</span>
+                  )}
                 </p>
               </div>
             </div>
@@ -400,9 +432,10 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             <div className="flex flex-wrap gap-4 mt-6">
               <button
                 onClick={handleAddToCart}
-                className="bg-primary hover:bg-primary-container text-white dark:text-[#002B1F] dark:bg-secondary dark:hover:bg-secondary-container font-semibold px-8 py-3.5 rounded-xl transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                disabled={isOutOfStock}
+                className="bg-primary hover:bg-primary-container text-white dark:text-[#002B1F] dark:bg-secondary dark:hover:bg-secondary-container font-semibold px-8 py-3.5 rounded-xl transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
               >
-                Thêm Vào Giỏ Hàng
+                {isOutOfStock ? "Hết Hàng" : "Thêm Vào Giỏ Hàng"}
               </button>
 
               <button

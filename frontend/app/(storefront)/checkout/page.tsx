@@ -138,11 +138,66 @@ function CheckoutContent() {
   const [isStripeLoading, setIsStripeLoading] = useState(false);
   const [isMockStripe, setIsMockStripe] = useState(true);
 
+  // Real Momo Integration States
+  const [momoPayUrl, setMomoPayUrl] = useState("");
+  const [isMomoLoading, setIsMomoLoading] = useState(false);
+  const [isMockMomo, setIsMockMomo] = useState(true);
+
   // Mock Stripe Form States
   const [cardNumber, setCardNumber] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvc, setCardCvc] = useState("");
   const [cardName, setCardName] = useState("");
+
+  // Fetch Momo payUrl
+  useEffect(() => {
+    if (paymentMethod === "Momo" && orderId) {
+      setIsMomoLoading(true);
+      fetch("/api/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customer: {
+            name: "Khách Hàng Test",
+            phone: "0912345678",
+            address: "Địa chỉ Test",
+            note: "Test thanh toán Momo",
+          },
+          paymentMethod: "Momo",
+          idempotencyKey: `idemp_${orderId}`,
+          items: [
+            {
+              productId: "1",
+              name: `Thanh toán đơn hàng ${orderId}`,
+              price: amount,
+              quantity: 1,
+            }
+          ]
+        })
+      })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.payUrl) {
+          setMomoPayUrl(data.payUrl);
+          if (data.isMock) {
+            setIsMockMomo(true);
+          } else {
+            setIsMockMomo(false);
+            // Redirect immediately to Momo's real payment gateway
+            window.location.href = data.payUrl;
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to initialize Momo:", err);
+      })
+      .finally(() => {
+        setIsMomoLoading(false);
+      });
+    }
+  }, [paymentMethod, orderId, amount]);
 
   // Fetch clientSecret if payment method is Stripe
   useEffect(() => {
@@ -216,7 +271,41 @@ function CheckoutContent() {
 
     setPaymentStatus("processing");
 
-    setTimeout(() => {
+    // Call local webhook to update database status in mock/simulation mode
+    const notifyLocalWebhook = async () => {
+      try {
+        if (paymentMethod === "Stripe" && isMockStripe) {
+          await fetch("/api/payment-webhook/stripe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "payment_intent.succeeded",
+              data: {
+                object: {
+                  metadata: { orderId },
+                  amountPaid: amount,
+                }
+              }
+            })
+          });
+        } else if (paymentMethod === "Momo" && isMockMomo) {
+          await fetch("/api/payment-webhook/momo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId,
+              resultCode: 0,
+              amount,
+            })
+          });
+        }
+      } catch (err) {
+        console.error("Failed to call local webhook during simulation:", err);
+      }
+    };
+
+    setTimeout(async () => {
+      await notifyLocalWebhook();
       setPaymentStatus("success");
 
       // Update order status in localStorage
@@ -371,38 +460,44 @@ function CheckoutContent() {
 
               {/* Momo Flow */}
               {paymentMethod === "Momo" && (
-                <div className="space-y-6">
-                  <div className="text-center mb-4">
-                    <span className="text-4xl">🟣</span>
-                    <h2 className="text-lg font-bold text-slate-200 mt-2">Thanh Toán Qua Ví Momo</h2>
-                    <p className="text-xs text-slate-400 mt-1">Mở ứng dụng Momo và quét mã QR để thanh toán</p>
-                  </div>
+                <div>
+                  {isMomoLoading ? (
+                    <MusicLoading message="Đang khởi tạo giao dịch Momo..." height="150px" theme="dark" />
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="text-center mb-4">
+                        <span className="text-4xl">🟣</span>
+                        <h2 className="text-lg font-bold text-slate-200 mt-2">Thanh Toán Qua Ví Momo</h2>
+                        <p className="text-xs text-slate-400 mt-1">Mở ứng dụng Momo và quét mã QR để thanh toán</p>
+                      </div>
 
-                  <div className="flex flex-col items-center justify-center p-6 bg-slate-900/50 rounded-2xl border border-slate-700/30">
-                    <div className="w-40 h-40 bg-white p-3 rounded-xl flex items-center justify-center mb-4 shadow-inner">
-                      <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=momo://payment?amount=${amount}%26orderId=${orderId}`}
-                        alt="Momo QR Code"
-                        className="w-full h-full object-contain"
-                      />
+                      <div className="flex flex-col items-center justify-center p-6 bg-slate-900/50 rounded-2xl border border-slate-700/30">
+                        <div className="w-40 h-40 bg-white p-3 rounded-xl flex items-center justify-center mb-4 shadow-inner">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=momo://payment?amount=${amount}%26orderId=${orderId}`}
+                            alt="Momo QR Code"
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <span className="text-xs text-slate-400 font-mono">Mã đơn Momo: momo_{orderId}</span>
+                      </div>
+
+                      <div className="flex gap-4">
+                        <button
+                          onClick={handlePaymentSubmit}
+                          className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg active:scale-[0.98]"
+                        >
+                          Xác Nhận Thanh Toán (Momo)
+                        </button>
+                        <button
+                          onClick={handleCancel}
+                          className="bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-3 px-6 rounded-xl transition-all"
+                        >
+                          Hủy
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-xs text-slate-400 font-mono">Mã đơn Momo: momo_{orderId}</span>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <button
-                      onClick={handlePaymentSubmit}
-                      className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg active:scale-[0.98]"
-                    >
-                      Xác Nhận Thanh Toán (Momo)
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-3 px-6 rounded-xl transition-all"
-                    >
-                      Hủy
-                    </button>
-                  </div>
+                  )}
                 </div>
               )}
 

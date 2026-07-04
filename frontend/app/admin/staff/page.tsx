@@ -41,7 +41,10 @@ export default function AdminStaffPage() {
         const data = await res.json();
         // Filter: Only include Admin and Staff members
         const staffOnly = (data || []).filter(
-          (u: AdminUser) => u.role === "Admin" || u.role === "Staff"
+          (u: AdminUser) => {
+            const role = u.role?.toLowerCase();
+            return role === "admin" || role === "staff";
+          }
         );
         setUsersList(staffOnly);
       }

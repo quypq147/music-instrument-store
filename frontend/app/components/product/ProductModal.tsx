@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Product } from "../../../types/product";
 
 interface ProductFormData {
@@ -35,6 +36,34 @@ export function ProductModal({
   onSubmit,
   onClose,
 }: ProductModalProps) {
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch("/api/categories");
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data);
+        }
+      } catch (err) {
+        console.error("Error fetching categories in modal:", err);
+      }
+    };
+    fetchCategories();
+  }, [isOpen]);
+
+  const defaultCategories = [
+    { id: "alto-saxophone", name: "Alto Saxophone" },
+    { id: "tenor-saxophone", name: "Tenor Saxophone" },
+    { id: "soprano-saxophone", name: "Soprano Saxophone" },
+    { id: "baritone-saxophone", name: "Baritone Saxophone" },
+    { id: "accessories", name: "Accessories" }
+  ];
+
+  const displayedCategories = categories.length > 0 ? categories : defaultCategories;
+
   if (!isOpen) return null;
 
   return (
@@ -103,11 +132,11 @@ export function ProductModal({
                 disabled={isSubmitting}
                 className={inputClasses}
               >
-                <option value="Alto Saxophone">Alto Saxophone</option>
-                <option value="Tenor Saxophone">Tenor Saxophone</option>
-                <option value="Soprano Saxophone">Soprano Saxophone</option>
-                <option value="Baritone Saxophone">Baritone Saxophone</option>
-                <option value="Accessories">Phụ kiện Saxophone</option>
+                {displayedCategories.map((cat) => (
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

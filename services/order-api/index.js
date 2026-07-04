@@ -24,8 +24,12 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var import_node_crypto = require("node:crypto");
 var import_client_sqs = require("@aws-sdk/client-sqs");
+var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
+var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var sqs = new import_client_sqs.SQSClient({});
 var queueUrl = process.env.ORDER_QUEUE_URL;
+var tableName = process.env.TABLE_NAME;
+var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(new import_client_dynamodb.DynamoDBClient({}));
 var corsHeaders = {
   "Access-Control-Allow-Origin": process.env.CORS_ALLOW_ORIGIN ?? "*",
   "Access-Control-Allow-Headers": "Content-Type,Authorization",
@@ -75,8 +79,62 @@ var parseRequest = (body) => {
     items: parsed.items,
     paymentMethod: parsed.paymentMethod,
     userId: typeof parsed.userId === "string" ? parsed.userId : void 0,
-    email: typeof parsed.email === "string" ? parsed.email : void 0
+    email: typeof parsed.email === "string" ? parsed.email : void 0,
+    couponCode: typeof parsed.couponCode === "string" && parsed.couponCode.trim() ? parsed.couponCode.trim() : void 0
   };
+};
+var CouponError = class extends Error {
+};
+var applyCoupon = async (couponCode, totalPrice) => {
+  if (!tableName) {
+    throw new CouponError("H\u1EC7 th\u1ED1ng ch\u01B0a c\u1EA5u h\xECnh \u0111\u1EC3 \xE1p d\u1EE5ng m\xE3 gi\u1EA3m gi\xE1.");
+  }
+  const result = await dynamoDb.send(
+    new import_lib_dynamodb.GetCommand({
+      TableName: tableName,
+      Key: {
+        PK: `COUPON#${couponCode}`,
+        SK: "METADATA"
+      }
+    })
+  );
+  const coupon = result.Item;
+  if (!coupon) {
+    throw new CouponError("M\xE3 gi\u1EA3m gi\xE1 kh\xF4ng t\u1ED3n t\u1EA1i.");
+  }
+  const now = /* @__PURE__ */ new Date();
+  const isExpired = coupon.validFrom && now < new Date(coupon.validFrom) || coupon.validUntil && now > new Date(coupon.validUntil);
+  const isExhausted = typeof coupon.usageLimit === "number" && coupon.usageCount >= coupon.usageLimit;
+  if (!coupon.isActive || isExpired || isExhausted) {
+    throw new CouponError("M\xE3 gi\u1EA3m gi\xE1 kh\xF4ng c\xF2n hi\u1EC7u l\u1EF1c.");
+  }
+  if (coupon.minOrderValue && totalPrice < coupon.minOrderValue) {
+    throw new CouponError(`\u0110\u01A1n h\xE0ng c\u1EA7n t\u1ED1i thi\u1EC3u ${coupon.minOrderValue.toLocaleString("vi-VN")}\u0111 \u0111\u1EC3 \xE1p d\u1EE5ng m\xE3 n\xE0y.`);
+  }
+  const discountAmount = coupon.discountType === "percentage" ? Math.round(totalPrice * coupon.discountValue / 100) : Math.min(coupon.discountValue, totalPrice);
+  try {
+    await dynamoDb.send(
+      new import_lib_dynamodb.UpdateCommand({
+        TableName: tableName,
+        Key: {
+          PK: `COUPON#${couponCode}`,
+          SK: "METADATA"
+        },
+        UpdateExpression: "ADD usageCount :one",
+        ConditionExpression: "attribute_not_exists(usageLimit) OR usageLimit = :nullVal OR usageCount < usageLimit",
+        ExpressionAttributeValues: {
+          ":one": 1,
+          ":nullVal": null
+        }
+      })
+    );
+  } catch (err) {
+    if (err?.name === "ConditionalCheckFailedException") {
+      throw new CouponError("M\xE3 gi\u1EA3m gi\xE1 \u0111\xE3 h\u1EBFt l\u01B0\u1EE3t s\u1EED d\u1EE5ng.");
+    }
+    throw err;
+  }
+  return discountAmount;
 };
 var handler = async (event) => {
   try {
@@ -93,10 +151,22 @@ var handler = async (event) => {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const orderId = `ord_${Date.now()}_${(0, import_node_crypto.randomUUID)().slice(0, 8)}`;
     const totalItems = request.items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = request.items.reduce(
+    const subtotal = request.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
+    let discountAmount = 0;
+    if (request.couponCode) {
+      try {
+        discountAmount = await applyCoupon(request.couponCode, subtotal);
+      } catch (err) {
+        if (err instanceof CouponError) {
+          return jsonResponse(400, { message: err.message });
+        }
+        throw err;
+      }
+    }
+    const totalPrice = subtotal - discountAmount;
     const order = {
       PK: `ORDER#${orderId}`,
       SK: "METADATA",
@@ -107,6 +177,8 @@ var handler = async (event) => {
       items: request.items,
       totalItems,
       totalPrice,
+      couponCode: request.couponCode,
+      discountAmount,
       paymentMethod: request.paymentMethod,
       status: "PENDING",
       createdAt: now,
@@ -122,7 +194,8 @@ var handler = async (event) => {
       orderId,
       status: order.status,
       totalItems,
-      totalPrice
+      totalPrice,
+      discountAmount
     });
   } catch (error) {
     if (error instanceof SyntaxError || error instanceof Error) {

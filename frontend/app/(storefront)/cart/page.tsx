@@ -61,6 +61,12 @@ export default function Cart() {
   const [paymentMethod, setPaymentMethod] = useState("COD");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
   const [customer, setCustomer] = useState<Customer>({
     name: "",
     phone: "",
@@ -172,6 +178,49 @@ export default function Cart() {
     0
   );
 
+  const finalPrice = Math.max(totalPrice - discountAmount, 0);
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+
+    setIsApplyingCoupon(true);
+    setCouponError(null);
+
+    try {
+      const res = await fetch(`/api/coupons/${encodeURIComponent(code)}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.valid) {
+        setDiscountAmount(0);
+        setAppliedCouponCode(null);
+        setCouponError(data.error || data.message || "Mã giảm giá không hợp lệ");
+        return;
+      }
+
+      const coupon = data.coupon;
+      if (coupon.minOrderValue && totalPrice < coupon.minOrderValue) {
+        setDiscountAmount(0);
+        setAppliedCouponCode(null);
+        setCouponError(`Đơn hàng cần tối thiểu ${Number(coupon.minOrderValue).toLocaleString("vi-VN")}đ để áp dụng mã này.`);
+        return;
+      }
+
+      const discount =
+        coupon.discountType === "percentage"
+          ? Math.round((totalPrice * coupon.discountValue) / 100)
+          : Math.min(coupon.discountValue, totalPrice);
+
+      setDiscountAmount(discount);
+      setAppliedCouponCode(code);
+    } catch (error) {
+      console.error("Failed to apply coupon", error);
+      setCouponError("Không thể kiểm tra mã giảm giá. Vui lòng thử lại.");
+    } finally {
+      setIsApplyingCoupon(false);
+    }
+  };
+
   const confirmOrder = async () => {
     if (selectedItems.length === 0) {
       showToast("Vui lòng chọn ít nhất 1 sản phẩm để thanh toán", "warning");
@@ -212,6 +261,7 @@ export default function Cart() {
           paymentMethod,
           userId,
           email,
+          couponCode: appliedCouponCode || undefined,
           items: selectedCart.map((item) => ({
             productId: String(item.id),
             name: item.name,
@@ -223,12 +273,16 @@ export default function Cart() {
       });
 
       if (!response.ok) {
-        throw new Error(`Order API returned ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        showToast(errorData.message || "Không thể tạo đơn hàng. Vui lòng thử lại.", "error");
+        return;
       }
 
       const result = (await response.json()) as {
         orderId?: string;
         status?: string;
+        totalPrice?: number;
+        discountAmount?: number;
       };
       const oldOrders = JSON.parse(localStorage.getItem("orders") || "[]") as Order[];
       const orderTimestamp = createOrderTimestamp();
@@ -239,7 +293,9 @@ export default function Cart() {
         paymentMethod,
         products: selectedCart,
         totalItems,
-        totalPrice,
+        totalPrice: result.totalPrice ?? finalPrice,
+        couponCode: appliedCouponCode || undefined,
+        discountAmount: result.discountAmount ?? discountAmount,
         status: result.status === "PENDING" ? "Chờ xác nhận" : (result.status ?? "Chờ xác nhận"),
         createdAt: orderTimestamp.createdAt,
       };
@@ -264,8 +320,13 @@ export default function Cart() {
         note: "",
       });
 
+      setCouponCode("");
+      setAppliedCouponCode(null);
+      setDiscountAmount(0);
+      setCouponError(null);
+
       if (paymentMethod === "VNPay" || paymentMethod === "Momo" || paymentMethod === "Stripe") {
-        router.push(`/checkout?orderId=${newOrder.id}&method=${paymentMethod}&amount=${totalPrice}`);
+        router.push(`/checkout?orderId=${newOrder.id}&method=${paymentMethod}&amount=${newOrder.totalPrice}`);
       } else {
         router.push("/orders");
       }
@@ -338,6 +399,12 @@ export default function Cart() {
               setShowCheckout(true);
             }}
             onClearCartClick={clearCart}
+            couponCode={couponCode}
+            onCouponCodeChange={setCouponCode}
+            onApplyCoupon={applyCoupon}
+            isApplyingCoupon={isApplyingCoupon}
+            couponError={couponError}
+            discountAmount={discountAmount}
           />
         </div>
       )}
@@ -348,7 +415,7 @@ export default function Cart() {
           onChangeCustomer={setCustomer}
           paymentMethod={paymentMethod}
           onChangePaymentMethod={setPaymentMethod}
-          totalPrice={totalPrice}
+          totalPrice={finalPrice}
           isSubmitting={isSubmitting}
           onConfirm={confirmOrder}
           onClose={() => setShowCheckout(false)}

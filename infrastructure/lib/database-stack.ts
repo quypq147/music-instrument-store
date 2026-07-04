@@ -29,6 +29,14 @@ export class DatabaseStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI2: query sản phẩm theo category/type (TYPE#<type>) thay vì Scan toàn bảng
+    this.mainTable.addGlobalSecondaryIndex({
+      indexName: 'GSI2',
+      partitionKey: { name: 'GSI2PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'GSI2SK', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Khởi tạo S3 Bucket lưu trữ hình ảnh sản phẩm
     this.productsBucket = new s3.Bucket(this, 'MusicStoreProductsBucket', {
       publicReadAccess: true,

@@ -85,6 +85,7 @@ export class BackendStack extends cdk.Stack {
       code: lambda.Code.fromAsset("../services/order-api"),
       environment: {
         ORDER_QUEUE_URL: orderQueue.queueUrl,
+        TABLE_NAME: props.productsTable.tableName,
       },
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -189,6 +190,7 @@ export class BackendStack extends cdk.Stack {
 
     // 6. Cấp quyền IAM cho các tài nguyên
     props.productsTable.grantReadWriteData(productApiLambda);
+    props.productsTable.grantReadWriteData(orderApiLambda); // Order API cần đọc/ghi coupon (validate + tăng usageCount)
     props.productsTable.grantReadWriteData(orderProcessingLambda); // Order Processor cần ghi DynamoDB
     props.productsTable.grantReadWriteData(checkoutApiLambda); // Checkout API cần cập nhật kho sản phẩm
     props.productsTable.grantReadWriteData(paymentWebhookLambda); // Payment Webhook cần cập nhật kho sản phẩm
@@ -234,15 +236,21 @@ export class BackendStack extends cdk.Stack {
 
     // 8. Cấu hình các Resource và Method cho API Gateway
 
+    // productApiLambda phục vụ rất nhiều route trên cùng 1 API Gateway; tắt allowTestInvoke
+    // để tránh resource policy của Lambda vượt giới hạn 20KB (mỗi route x2 statement: prod + test-invoke).
+    const productApiIntegration = new apigateway.LambdaIntegration(productApiLambda, {
+      allowTestInvoke: false,
+    });
+
     // Route: /products
     const productsResource = api.root.addResource("products");
     productsResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda)
+      productApiIntegration
     );
     productsResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -253,11 +261,11 @@ export class BackendStack extends cdk.Stack {
     const productResource = productsResource.addResource("{id}");
     productResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda)
+      productApiIntegration
     );
     productResource.addMethod(
       "PUT",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -265,22 +273,29 @@ export class BackendStack extends cdk.Stack {
     );
     productResource.addMethod(
       "DELETE",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
       } : undefined
     );
 
+    // Route: /products/{id}/view
+    const viewResource = productResource.addResource("view");
+    viewResource.addMethod(
+      "POST",
+      productApiIntegration
+    );
+
     // Route: /products/{id}/ratings
     const ratingsResource = productResource.addResource("ratings");
     ratingsResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda)
+      productApiIntegration
     );
     ratingsResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -291,11 +306,11 @@ export class BackendStack extends cdk.Stack {
     const commentsResource = productResource.addResource("comments");
     commentsResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda)
+      productApiIntegration
     );
     commentsResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -306,7 +321,7 @@ export class BackendStack extends cdk.Stack {
     const usersResource = api.root.addResource("users");
     usersResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -317,7 +332,7 @@ export class BackendStack extends cdk.Stack {
     const userResource = usersResource.addResource("{userId}");
     userResource.addMethod(
       "PUT",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -325,7 +340,7 @@ export class BackendStack extends cdk.Stack {
     );
     userResource.addMethod(
       "DELETE",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -336,7 +351,7 @@ export class BackendStack extends cdk.Stack {
     const profileResource = usersResource.addResource("profile");
     profileResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -344,7 +359,7 @@ export class BackendStack extends cdk.Stack {
     );
     profileResource.addMethod(
       "PUT",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -355,7 +370,7 @@ export class BackendStack extends cdk.Stack {
     const userOrdersResource = usersResource.addResource("orders");
     userOrdersResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -366,7 +381,7 @@ export class BackendStack extends cdk.Stack {
     const wishlistResource = usersResource.addResource("wishlist");
     wishlistResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -374,7 +389,7 @@ export class BackendStack extends cdk.Stack {
     );
     wishlistResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -385,7 +400,7 @@ export class BackendStack extends cdk.Stack {
     const wishlistProductResource = wishlistResource.addResource("{productId}");
     wishlistProductResource.addMethod(
       "DELETE",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -402,7 +417,7 @@ export class BackendStack extends cdk.Stack {
     // GET /orders (Admin/Staff only)
     ordersResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -413,11 +428,40 @@ export class BackendStack extends cdk.Stack {
     const orderIdResource = ordersResource.addResource("{id}");
     orderIdResource.addMethod(
       "PUT",
-      new apigateway.LambdaIntegration(productApiLambda),
+      productApiIntegration,
       authorizer ? {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
       } : undefined
+    );
+
+    // Route: /orders/{id}/history (GET - Staff hoặc chủ đơn hàng)
+    const orderHistoryResource = orderIdResource.addResource("history");
+    orderHistoryResource.addMethod(
+      "GET",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // Route: /coupons
+    const couponsResource = api.root.addResource("coupons");
+    couponsResource.addMethod(
+      "POST",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // Route: /coupons/{code} (GET - public preview/validate)
+    const couponCodeResource = couponsResource.addResource("{code}");
+    couponCodeResource.addMethod(
+      "GET",
+      productApiIntegration
     );
 
     // Route: /checkout
@@ -449,6 +493,13 @@ export class BackendStack extends cdk.Stack {
     const webhooksResource = api.root.addResource("webhooks");
     const stripeWebhookResource = webhooksResource.addResource("stripe");
     stripeWebhookResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(paymentWebhookLambda)
+    );
+
+    // Route: /webhooks/momo
+    const momoWebhookResource = webhooksResource.addResource("momo");
+    momoWebhookResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(paymentWebhookLambda)
     );
