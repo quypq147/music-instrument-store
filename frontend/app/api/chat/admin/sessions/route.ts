@@ -34,7 +34,18 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    const formatSession = (item: any) => ({
+    interface ChatSessionRecord {
+      PK: string;
+      userId: string;
+      userName: string;
+      status: string;
+      assignedStaffId?: string;
+      assignedStaffName?: string;
+      createdAt: string;
+      updatedAt: string;
+    }
+
+    const formatSession = (item: ChatSessionRecord) => ({
       sessionId: item.PK.replace("CHAT#SESSION#", ""),
       userId: item.userId,
       userName: item.userName,
@@ -45,8 +56,8 @@ export async function GET(req: NextRequest) {
       updatedAt: item.updatedAt,
     });
 
-    const waitingSessions = (waitingQuery.Items || []).map(formatSession);
-    const activeSessions = (activeQuery.Items || []).map(formatSession);
+    const waitingSessions = ((waitingQuery.Items || []) as ChatSessionRecord[]).map(formatSession);
+    const activeSessions = ((activeQuery.Items || []) as ChatSessionRecord[]).map(formatSession);
 
     return NextResponse.json({
       waiting: waitingSessions,

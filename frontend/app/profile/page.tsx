@@ -1,7 +1,8 @@
 "use client";
 
 import "../components/common/AmplifyConfig";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from "../context/ToastContext";
@@ -65,8 +66,9 @@ const currencyFormatter = new Intl.NumberFormat("vi-VN", {
 const inputClasses =
   "w-full px-4 py-3 border border-slate-200 dark:border-emerald-900/40 rounded-xl text-slate-800 dark:text-emerald-50 text-sm outline-none focus:border-[#002B1F] dark:focus:border-secondary focus:shadow-[0_0_0_1px_#002B1F] dark:focus:shadow-[0_0_0_1px_#DF9E47] transition-all bg-white dark:bg-[#031d16]";
 
-export default function ProfilePage() {
+function ProfileContent() {
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
   const confirmAction = useConfirm();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -184,6 +186,22 @@ export default function ProfilePage() {
     };
     init();
   }, []);
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam === "profile" || tabParam === "wishlist" || tabParam === "orders" || tabParam === "settings") {
+      (() => setActiveTab(tabParam))();
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const orderIdParam = searchParams.get("orderId");
+    if (!orderIdParam) return;
+    const match = orders.find((o) => o.id === orderIdParam);
+    if (match) {
+      (() => setSelectedDetailOrder(match))();
+    }
+  }, [searchParams, orders]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -660,5 +678,17 @@ export default function ProfilePage() {
         }
       `}} />
     </main>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-[60vh] flex justify-center items-center bg-slate-50 dark:bg-[#02140f] transition-colors duration-300">
+        <MusicLoading message="Đang tải trang cá nhân..." height="150px" />
+      </main>
+    }>
+      <ProfileContent />
+    </Suspense>
   );
 }
