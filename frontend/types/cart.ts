@@ -15,11 +15,11 @@ export interface Customer {
 
 export interface Order {
   id: string;
-  customer: Customer;
+  customer?: Customer;
   paymentMethod: string;
-  products: CartItem[];
-  totalItems: number;
-  totalPrice: number;
+  products?: CartItem[];
+  totalItems?: number;
+  totalPrice?: number;
   status: string;
   createdAt: string;
 }

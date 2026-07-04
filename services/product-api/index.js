@@ -24,8 +24,11 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
+var import_client_eventbridge = require("@aws-sdk/client-eventbridge");
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(new import_client_dynamodb.DynamoDBClient({}));
 var tableName = process.env.TABLE_NAME;
+var eventBridge = new import_client_eventbridge.EventBridgeClient({});
+var eventBusName = process.env.EVENT_BUS_NAME;
 var jsonResponse = (statusCode, body) => ({
   statusCode,
   headers: {
@@ -278,6 +281,107 @@ var handler = async (event) => {
         });
         return jsonResponse(200, orders);
       }
+    }
+    if (resource === "/orders" && method === "GET") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      const items = [];
+      let ExclusiveStartKey;
+      do {
+        const result = await dynamoDb.send(
+          new import_lib_dynamodb.ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(PK, :orderPrefix) AND SK = :metadataSk",
+            ExpressionAttributeValues: {
+              ":orderPrefix": "ORDER#",
+              ":metadataSk": "METADATA"
+            },
+            ExclusiveStartKey
+          })
+        );
+        items.push(...result.Items ?? []);
+        ExclusiveStartKey = result.LastEvaluatedKey;
+      } while (ExclusiveStartKey);
+      const sortedOrders = items.map((item) => {
+        const stripped = stripTableKeys(item);
+        return {
+          ...stripped,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt
+        };
+      }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return jsonResponse(200, sortedOrders);
+    }
+    if (resource === "/orders/{id}" && method === "PUT") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { status } = JSON.parse(event.body);
+      if (!status) {
+        return jsonResponse(400, { message: "Status is required" });
+      }
+      const getResult = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA"
+          }
+        })
+      );
+      if (!getResult.Item) {
+        return jsonResponse(404, { message: "Order not found" });
+      }
+      const order = getResult.Item;
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const updatedOrder = {
+        ...order,
+        status,
+        updatedAt: now
+      };
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: updatedOrder
+        })
+      );
+      if (eventBusName) {
+        try {
+          console.log(`Publishing OrderUpdated event for order ${targetOrderId} to ${eventBusName}...`);
+          await eventBridge.send(
+            new import_client_eventbridge.PutEventsCommand({
+              Entries: [
+                {
+                  EventBusName: eventBusName,
+                  Source: "com.musicstore.order",
+                  DetailType: "OrderUpdated",
+                  Detail: JSON.stringify({
+                    orderId: targetOrderId,
+                    customer: order.customer,
+                    status,
+                    totalPrice: order.totalPrice
+                  })
+                }
+              ]
+            })
+          );
+        } catch (err) {
+          console.error("Failed to publish OrderUpdated event to EventBridge", err);
+        }
+      }
+      return jsonResponse(200, stripTableKeys(updatedOrder));
     }
     if (resource === "/users" || resource === "/users/{userId}") {
       const groups = authorizer?.claims?.["cognito:groups"] || "";

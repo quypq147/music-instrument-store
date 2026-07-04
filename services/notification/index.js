@@ -46,6 +46,9 @@ var handler = async (event) => {
         let message = "";
         if (eventType === "OrderPlaced") {
           message = `[Music Store] \u0110\u01A1n h\xE0ng c\u1EE7a b\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u1EB7t th\xE0nh c\xF4ng! M\xE3 \u0111\u01A1n: ${detail.orderId}. T\u1ED5ng thanh to\xE1n: ${Number(detail.totalPrice).toLocaleString("vi-VN")}\u0111. Ph\u01B0\u01A1ng th\u1EE9c: ${detail.paymentMethod}.`;
+        } else if (eventType === "OrderUpdated") {
+          const status = detail.status || "C\u1EADp nh\u1EADt";
+          message = `[Music Store] \u0110\u01A1n h\xE0ng ${detail.orderId} c\u1EE7a b\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c c\u1EADp nh\u1EADt tr\u1EA1ng th\xE1i m\u1EDBi: ${status}.`;
         } else if (eventType === "PaymentSucceeded") {
           const orderId = detail.metadata?.orderId || detail.id || "N/A";
           const amount = detail.amount ? detail.amount.toLocaleString("vi-VN") : "N/A";

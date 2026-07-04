@@ -72,6 +72,7 @@ export class BackendStack extends cdk.Stack {
       environment: {
         TABLE_NAME: props.productsTable.tableName,
         BUCKET_NAME: props.productsBucket.bucketName,
+        EVENT_BUS_NAME: eventBus.eventBusName,
       },
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -172,7 +173,7 @@ export class BackendStack extends cdk.Stack {
       eventBus,
       eventPattern: {
         source: ["com.musicstore.order"],
-        detailType: ["OrderPlaced"],
+        detailType: ["OrderPlaced", "OrderUpdated"],
       },
     });
     orderPlacedRule.addTarget(new targets.SqsQueue(notificationQueue));
@@ -193,6 +194,7 @@ export class BackendStack extends cdk.Stack {
     props.productsTable.grantReadWriteData(paymentWebhookLambda); // Payment Webhook cần cập nhật kho sản phẩm
     props.productsBucket.grantReadWrite(productApiLambda);
     props.stripeSecrets.grantRead(checkoutApiLambda);
+    eventBus.grantPutEventsTo(productApiLambda);
     props.stripeSecrets.grantRead(paymentWebhookLambda);
     
     orderQueue.grantSendMessages(orderApiLambda); // API Gateway Lambda cần quyền gửi tới OrderQueue
@@ -395,6 +397,27 @@ export class BackendStack extends cdk.Stack {
     ordersResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(orderApiLambda)
+    );
+
+    // GET /orders (Admin/Staff only)
+    ordersResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(productApiLambda),
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // PUT /orders/{id} (Admin/Staff only)
+    const orderIdResource = ordersResource.addResource("{id}");
+    orderIdResource.addMethod(
+      "PUT",
+      new apigateway.LambdaIntegration(productApiLambda),
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
     );
 
     // Route: /checkout

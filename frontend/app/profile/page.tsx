@@ -1,13 +1,41 @@
 "use client";
 
-import "../components/AmplifyConfig";
+import "../components/common/AmplifyConfig";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmDialogContext";
+import { useTheme } from "../context/ThemeContext";
 import { fetchAuthSession, getCurrentUser, updatePassword } from "aws-amplify/auth";
-import AddressSelector from "../components/AddressSelector";
-import { OrderCard } from "../components/OrderCard";
+import AddressSelector from "../components/address/AddressSelector";
+import { OrderCard } from "../components/order/OrderCard";
 import type { Order } from "../../types/cart";
+import MusicLoading from "../components/common/MusicLoading";
+
+interface DbOrderItem {
+  productId: string;
+  name: string;
+  price: number;
+  imageUrl?: string;
+  quantity: number;
+}
+
+interface DbOrder {
+  id: string;
+  customer: {
+    name: string;
+    phone: string;
+    address: string;
+    note: string;
+  };
+  paymentMethod: string;
+  items?: DbOrderItem[];
+  totalItems: number;
+  totalPrice: number;
+  status: string;
+  createdAt?: string;
+}
 
 type UserProfile = {
   userId: string;
@@ -33,7 +61,12 @@ const currencyFormatter = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0,
 });
 
+const inputClasses =
+  "w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-800 text-sm outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all bg-white";
+
 export default function ProfilePage() {
+  const { showToast } = useToast();
+  const confirmAction = useConfirm();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
@@ -52,10 +85,7 @@ export default function ProfilePage() {
     emailPromo: true,
   });
 
-  const [preferences, setPreferences] = useState({
-    language: "vi",
-    theme: "light",
-  });
+  const { theme, setThemeExplicitly } = useTheme();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -108,11 +138,11 @@ export default function ProfilePage() {
       });
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
-        const mappedOrders = ordersData.map((order: any) => ({
+        const mappedOrders = ordersData.map((order: DbOrder) => ({
           id: order.id,
           customer: order.customer,
           paymentMethod: order.paymentMethod,
-          products: (order.items || []).map((item: any) => ({
+          products: (order.items || []).map((item: DbOrderItem) => ({
             id: Number(item.productId) || 0,
             name: item.name,
             price: `${(item.price || 0).toLocaleString("vi-VN")}đ`,
@@ -124,7 +154,7 @@ export default function ProfilePage() {
           status: order.status === "PENDING" ? "Chờ xác nhận" : (order.status ?? "Chờ xác nhận"),
           createdAt: order.createdAt ? new Date(order.createdAt).toLocaleString("vi-VN") : ""
         }));
-        mappedOrders.sort((a: any, b: any) => b.id.localeCompare(a.id));
+        mappedOrders.sort((a: Order, b: Order) => b.id.localeCompare(a.id));
         setOrders(mappedOrders);
       } else {
         const local = localStorage.getItem("orders");
@@ -172,14 +202,14 @@ export default function ProfilePage() {
       });
 
       if (res.ok) {
-        alert("Cập nhật thông tin cá nhân thành công!");
+        showToast("Cập nhật thông tin cá nhân thành công!", "success");
         fetchData();
       } else {
-        alert("Không thể cập nhật thông tin. Vui lòng thử lại!");
+        showToast("Không thể cập nhật thông tin. Vui lòng thử lại!", "error");
       }
     } catch (err) {
       console.error("Update profile error:", err);
-      alert("Đã xảy ra lỗi khi lưu thông tin.");
+      showToast("Đã xảy ra lỗi khi lưu thông tin.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -188,25 +218,26 @@ export default function ProfilePage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      alert("Mật khẩu mới và mật khẩu xác nhận không khớp!");
+      showToast("Mật khẩu mới và mật khẩu xác nhận không khớp!", "warning");
       return;
     }
 
     if (newPassword.length < 8) {
-      alert("Mật khẩu mới phải chứa ít nhất 8 ký tự!");
+      showToast("Mật khẩu mới phải chứa ít nhất 8 ký tự!", "warning");
       return;
     }
 
     setIsChangingPassword(true);
     try {
       await updatePassword({ oldPassword, newPassword });
-      alert("Đổi mật khẩu thành công!");
+      showToast("Đổi mật khẩu thành công!", "success");
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Change password error:", err);
-      alert(err.message || "Đã xảy ra lỗi khi đổi mật khẩu.");
+      const errMsg = err instanceof Error ? err.message : "Đã xảy ra lỗi khi đổi mật khẩu.";
+      showToast(errMsg, "error");
     } finally {
       setIsChangingPassword(false);
     }
@@ -216,7 +247,10 @@ export default function ProfilePage() {
     e.stopPropagation();
     e.preventDefault();
 
-    if (!confirm("Bạn muốn xóa sản phẩm này khỏi danh sách yêu thích?")) return;
+    const ok = await confirmAction({
+      message: "Bạn muốn xóa sản phẩm này khỏi danh sách yêu thích?",
+    });
+    if (!ok) return;
 
     try {
       const session = await fetchAuthSession();
@@ -231,23 +265,21 @@ export default function ProfilePage() {
       });
 
       if (res.ok) {
-        alert("Đã xóa sản phẩm khỏi danh sách yêu thích!");
+        showToast("Đã xóa sản phẩm khỏi danh sách yêu thích!", "success");
         fetchData();
       } else {
-        alert("Không thể xóa sản phẩm. Vui lòng thử lại!");
+        showToast("Không thể xóa sản phẩm. Vui lòng thử lại!", "error");
       }
     } catch (err) {
       console.error("Wishlist remove error:", err);
-      alert("Đã xảy ra lỗi.");
+      showToast("Đã xảy ra lỗi.", "error");
     }
   };
 
   if (isAuthenticated === null) {
     return (
       <main className="min-h-[60vh] flex justify-center items-center bg-slate-50">
-        <div className="text-emerald-900 font-semibold tracking-wider animate-pulse uppercase">
-          Đang tải thông tin tài khoản...
-        </div>
+        <MusicLoading message="Xác thực tài khoản..." height="150px" />
       </main>
     );
   }
@@ -257,12 +289,12 @@ export default function ProfilePage() {
       <main className="min-h-[65vh] flex justify-center items-center bg-slate-50 p-6">
         <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-md text-center border border-slate-100">
           <span className="text-5xl block mb-4">🔒</span>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">Đăng Nhập Để Tiếp Tục</h1>
+          <h1 className="font-serif text-2xl text-[#002B1F] mb-2">Đăng Nhập Để Tiếp Tục</h1>
           <p className="text-slate-600 mb-6 leading-relaxed">
             Vui lòng đăng nhập để xem thông tin tài khoản, danh sách sản phẩm yêu thích và lịch sử mua sắm.
           </p>
           <Link href="/login">
-            <button className="w-full bg-emerald-900 hover:bg-emerald-950 text-white font-semibold py-3 rounded-xl transition-all shadow-sm">
+            <button className="w-full bg-[#002B1F] hover:bg-[#054030] text-white font-semibold py-3 rounded-xl transition-all shadow-sm">
               Đăng Nhập
             </button>
           </Link>
@@ -271,369 +303,349 @@ export default function ProfilePage() {
     );
   }
 
+  const tabs: { id: typeof activeTab; label: string }[] = [
+    { id: "profile", label: "👤 Thông tin tài khoản" },
+    { id: "wishlist", label: "❤️ Sản phẩm yêu thích" },
+    { id: "orders", label: "📦 Đơn hàng đã mua" },
+    { id: "settings", label: "⚙️ Cài đặt tài khoản" },
+  ];
+
   return (
-    <main className="bg-slate-50 min-h-screen py-12 px-4">
+    <main className="bg-slate-50 min-h-screen pt-28 pb-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row gap-8">
-          
+
           {/* Sidebar */}
           <aside className="w-full md:w-1/4 bg-white rounded-2xl p-6 shadow-sm border border-slate-100 h-fit">
             <div className="text-center mb-6 pb-6 border-b border-slate-100">
-              <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center text-3xl font-extrabold text-emerald-900 mx-auto mb-3 border border-emerald-100">
+              <div className="w-20 h-20 bg-[#F3EFEA] rounded-full flex items-center justify-center text-3xl font-extrabold text-[#002B1F] mx-auto mb-3 border border-[#DF9E47]/20">
                 {profile?.name ? profile.name.charAt(0).toUpperCase() : "U"}
               </div>
-              <h2 className="text-lg font-bold text-slate-800">{profile?.name || "Thành viên"}</h2>
+              <h2 className="font-serif text-lg text-[#002B1F]">{profile?.name || "Thành viên"}</h2>
               <p className="text-xs text-slate-400 mt-1">{profile?.email}</p>
             </div>
 
-            <nav className="space-y-2">
-              <button
-                onClick={() => setActiveTab("profile")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all text-left ${
-                  activeTab === "profile"
-                    ? "bg-emerald-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                👤 Thông tin tài khoản
-              </button>
-              <button
-                onClick={() => setActiveTab("wishlist")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all text-left ${
-                  activeTab === "wishlist"
-                    ? "bg-emerald-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                ❤️ Sản phẩm yêu thích
-              </button>
-              <button
-                onClick={() => setActiveTab("orders")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all text-left ${
-                  activeTab === "orders"
-                    ? "bg-emerald-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                📦 Đơn hàng đã mua
-              </button>
-              <button
-                onClick={() => setActiveTab("settings")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all text-left ${
-                  activeTab === "settings"
-                    ? "bg-emerald-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                ⚙️ Cài đặt tài khoản
-              </button>
+            <nav className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible -mx-2 px-2 md:mx-0 md:px-0 pb-1 md:pb-0">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-2.5 md:py-3 rounded-full md:rounded-xl font-semibold text-xs md:text-sm transition-all text-left whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? "bg-[#002B1F] text-white shadow-sm"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </nav>
           </aside>
 
           {/* Content */}
-          <section className="flex-1 bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100">
+          <section className="flex-1 bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100 overflow-hidden">
             {isLoadingData ? (
-              <div className="h-64 flex justify-center items-center">
-                <div className="text-slate-400 text-sm animate-pulse">Đang tải dữ liệu...</div>
-              </div>
-            ) : activeTab === "profile" ? (
-              <div>
-                <h2 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
-                  Thông Tin Cá Nhân
-                </h2>
-                
-                <form onSubmit={handleUpdateProfile} className="space-y-6 max-w-xl">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        disabled
-                        value={profile?.email || ""}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-400 text-sm cursor-not-allowed focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="name" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                        Họ và Tên
-                      </label>
-                      <input
-                        id="name"
-                        type="text"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Nguyễn Văn A"
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-900 focus:border-emerald-900 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="phone" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Số Điện Thoại
-                    </label>
-                    <input
-                      id="phone"
-                      type="tel"
-                      required
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="0912345678"
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-900 focus:border-emerald-900 transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="address" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Địa chỉ nhận hàng mặc định
-                    </label>
-                    <AddressSelector
-                      value={formData.address}
-                      onChange={(val) => setFormData({ ...formData, address: val })}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-emerald-900 hover:bg-emerald-950 text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm active:scale-[0.98] disabled:opacity-60"
-                  >
-                    {isSubmitting ? "Đang lưu..." : "Cập Nhật Thông Tin"}
-                  </button>
-                </form>
-              </div>
-            ) : activeTab === "wishlist" ? (
-              <div>
-                <h2 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
-                  Sản Phẩm Yêu Thích Của Bạn
-                </h2>
-
-                {wishlist.length === 0 ? (
-                  <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                    <span className="text-4xl block mb-3">❤️</span>
-                    <p className="text-sm text-slate-500 mb-4">Danh sách sản phẩm yêu thích đang trống.</p>
-                    <Link href="/products">
-                      <button className="bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-bold px-4 py-2.5 rounded-lg">
-                        Khám phá sản phẩm ngay
-                      </button>
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {wishlist.map((item) => (
-                      <Link 
-                        key={item.productId} 
-                        href={`/product/${item.productId}`}
-                        className="group flex flex-col justify-between bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all"
-                      >
-                        <div className="p-4 flex-1">
-                          <div className="relative w-full aspect-square bg-slate-50 rounded-lg overflow-hidden mb-4">
-                            <Image
-                              src={item.imageUrl}
-                              alt={item.name}
-                              fill
-                              className="object-contain p-2 group-hover:scale-105 transition-transform duration-300"
-                            />
-                          </div>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                            {item.brand}
-                          </span>
-                          <h3 className="font-bold text-sm text-slate-800 group-hover:text-emerald-900 transition-colors line-clamp-2 mt-1">
-                            {item.name}
-                          </h3>
-                          <p className="font-extrabold text-amber-700 text-sm mt-2">
-                            {currencyFormatter.format(item.price)}
-                          </p>
-                        </div>
-                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
-                          <button
-                            onClick={(e) => handleRemoveFromWishlist(item.productId, e)}
-                            className="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline"
-                          >
-                            Xóa khỏi yêu thích
-                          </button>
-                          <span className="text-xs text-emerald-800 font-bold group-hover:underline">
-                            Xem chi tiết →
-                          </span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : activeTab === "orders" ? (
-              <div>
-                <h2 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
-                  Đơn Hàng Đã Mua
-                </h2>
-
-                {orders.length === 0 ? (
-                  <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                    <span className="text-4xl block mb-3">📦</span>
-                    <p className="text-sm text-slate-500 mb-4">Bạn chưa có đơn hàng nào.</p>
-                    <Link href="/products">
-                      <button className="bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-bold px-4 py-2.5 rounded-lg">
-                        Khám phá sản phẩm ngay
-                      </button>
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-                    {orders.map((order) => (
-                      <OrderCard key={order.id} order={order} />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <MusicLoading message="Đang tải dữ liệu..." height="300px" />
             ) : (
-              <div>
-                <h2 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
-                  Cài Đặt Tài Khoản
-                </h2>
+              <div key={activeTab} className="profile-tab-fade">
+                {activeTab === "profile" ? (
+                  <div>
+                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                      Thông Tin Cá Nhân
+                    </h2>
 
-                {/* Section 1: Change Password */}
-                <div className="mb-8">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <span>🔑</span> Đổi mật khẩu
-                  </h3>
-                  <form onSubmit={handleChangePassword} className="space-y-4 max-w-md bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">Mật khẩu hiện tại</label>
-                      <input
-                        type="password"
-                        required
-                        value={oldPassword}
-                        onChange={(e) => setOldPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-900 focus:border-emerald-900 transition-all bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">Mật khẩu mới</label>
-                      <input
-                        type="password"
-                        required
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-900 focus:border-emerald-900 transition-all bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">Xác nhận mật khẩu mới</label>
-                      <input
-                        type="password"
-                        required
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-900 focus:border-emerald-900 transition-all bg-white"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={isChangingPassword}
-                      className="bg-emerald-900 hover:bg-emerald-950 text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-xs active:scale-[0.98] disabled:opacity-60"
-                    >
-                      {isChangingPassword ? "Đang cập nhật..." : "Cập Nhật Mật Khẩu"}
-                    </button>
-                  </form>
-                </div>
-
-                {/* Section 2: Notifications */}
-                <div className="mb-8 border-t border-slate-100 pt-6">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <span>🔔</span> Cấu hình nhận thông báo
-                  </h3>
-                  <div className="space-y-4 max-w-xl">
-                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800">Thông báo đơn hàng</h4>
-                        <p className="text-xs text-slate-500">Nhận thông báo qua email khi trạng thái đơn hàng thay đổi</p>
+                    <form onSubmit={handleUpdateProfile} className="space-y-6 max-w-xl">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            disabled
+                            value={profile?.email || ""}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-400 text-sm cursor-not-allowed focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="name" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                            Họ và Tên
+                          </label>
+                          <input
+                            id="name"
+                            type="text"
+                            required
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            placeholder="Nguyễn Văn A"
+                            className={inputClasses}
+                          />
+                        </div>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
+
+                      <div>
+                        <label htmlFor="phone" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                          Số Điện Thoại
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={notificationPrefs.emailOrder}
-                          onChange={(e) => setNotificationPrefs({ ...notificationPrefs, emailOrder: e.target.checked })}
-                          className="sr-only peer"
+                          id="phone"
+                          type="tel"
+                          required
+                          value={formData.phone}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          placeholder="0912345678"
+                          className={inputClasses}
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-900"></div>
-                      </label>
+                      </div>
+
+                      <div>
+                        <label htmlFor="address" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                          Địa chỉ nhận hàng mặc định
+                        </label>
+                        <AddressSelector
+                          value={formData.address}
+                          onChange={(val) => setFormData({ ...formData, address: val })}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="bg-[#002B1F] hover:bg-[#054030] text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm active:scale-[0.98] disabled:opacity-60"
+                      >
+                        {isSubmitting ? "Đang lưu..." : "Cập Nhật Thông Tin"}
+                      </button>
+                    </form>
+                  </div>
+                ) : activeTab === "wishlist" ? (
+                  <div>
+                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                      Sản Phẩm Yêu Thích Của Bạn
+                    </h2>
+
+                    {wishlist.length === 0 ? (
+                      <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <span className="text-4xl block mb-3">❤️</span>
+                        <p className="text-sm text-slate-500 mb-4">Danh sách sản phẩm yêu thích đang trống.</p>
+                        <Link href="/products">
+                          <button className="bg-[#002B1F] hover:bg-[#054030] text-white text-xs font-bold px-4 py-2.5 rounded-lg">
+                            Khám phá sản phẩm ngay
+                          </button>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {wishlist.map((item) => (
+                          <Link
+                            key={item.productId}
+                            href={`/product/${item.productId}`}
+                            className="group flex flex-col justify-between bg-white border border-gray-100 rounded-2xl overflow-hidden hover:border-[#DF9E47]/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
+                          >
+                            <div className="p-4 flex-1">
+                              <div className="relative w-full aspect-square bg-[#F3EFEA] rounded-xl overflow-hidden mb-4">
+                                <Image
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  fill
+                                  className="object-contain p-4 group-hover:scale-105 transition-transform duration-500"
+                                />
+                              </div>
+                              <span className="text-[10px] uppercase font-bold text-[#A36B2B] tracking-widest">
+                                {item.brand}
+                              </span>
+                              <h3 className="font-serif text-slate-800 text-base font-semibold group-hover:text-[#A36B2B] transition-colors line-clamp-2 mt-1">
+                                {item.name}
+                              </h3>
+                              <p className="font-extrabold text-[#A36B2B] text-sm mt-2">
+                                {currencyFormatter.format(item.price)}
+                              </p>
+                            </div>
+                            <div className="p-4 border-t border-gray-100 bg-[#F3EFEA]/40 flex justify-between items-center">
+                              <button
+                                onClick={(e) => handleRemoveFromWishlist(item.productId, e)}
+                                className="text-xs text-rose-600 hover:text-rose-700 font-semibold hover:underline"
+                              >
+                                Xóa khỏi yêu thích
+                              </button>
+                              <span className="text-xs text-[#002B1F] font-bold group-hover:underline">
+                                Xem chi tiết →
+                              </span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : activeTab === "orders" ? (
+                  <div>
+                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                      Đơn Hàng Đã Mua
+                    </h2>
+
+                    {orders.length === 0 ? (
+                      <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <span className="text-4xl block mb-3">📦</span>
+                        <p className="text-sm text-slate-500 mb-4">Bạn chưa có đơn hàng nào.</p>
+                        <Link href="/products">
+                          <button className="bg-[#002B1F] hover:bg-[#054030] text-white text-xs font-bold px-4 py-2.5 rounded-lg">
+                            Khám phá sản phẩm ngay
+                          </button>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                        {orders.map((order) => (
+                          <OrderCard key={order.id} order={order} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <h2 className="font-serif text-xl text-[#002B1F] mb-6 pb-2 border-b border-slate-100">
+                      Cài Đặt Tài Khoản
+                    </h2>
+
+                    {/* Section 1: Change Password */}
+                    <div className="mb-8">
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <span>🔑</span> Đổi mật khẩu
+                      </h3>
+                      <form onSubmit={handleChangePassword} className="space-y-4 max-w-md bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-2">Mật khẩu hiện tại</label>
+                          <input
+                            type="password"
+                            required
+                            value={oldPassword}
+                            onChange={(e) => setOldPassword(e.target.value)}
+                            className={inputClasses}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-2">Mật khẩu mới</label>
+                          <input
+                            type="password"
+                            required
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className={inputClasses}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-2">Xác nhận mật khẩu mới</label>
+                          <input
+                            type="password"
+                            required
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className={inputClasses}
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={isChangingPassword}
+                          className="bg-[#002B1F] hover:bg-[#054030] text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-xs active:scale-[0.98] disabled:opacity-60"
+                        >
+                          {isChangingPassword ? "Đang cập nhật..." : "Cập Nhật Mật Khẩu"}
+                        </button>
+                      </form>
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800">Cập nhật giao hàng qua SMS</h4>
-                        <p className="text-xs text-slate-500">Nhận tin nhắn SMS trực tiếp về hành trình vận chuyển đơn hàng</p>
+                    {/* Section 2: Notifications */}
+                    <div className="mb-8 border-t border-slate-100 pt-6">
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <span>🔔</span> Cấu hình nhận thông báo
+                      </h3>
+                      <div className="space-y-4 max-w-xl">
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800">Thông báo đơn hàng</h4>
+                            <p className="text-xs text-slate-500">Nhận thông báo qua email khi trạng thái đơn hàng thay đổi</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={notificationPrefs.emailOrder}
+                              onChange={(e) => setNotificationPrefs({ ...notificationPrefs, emailOrder: e.target.checked })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F]"></div>
+                          </label>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800">Cập nhật giao hàng qua SMS</h4>
+                            <p className="text-xs text-slate-500">Nhận tin nhắn SMS trực tiếp về hành trình vận chuyển đơn hàng</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={notificationPrefs.smsShipping}
+                              onChange={(e) => setNotificationPrefs({ ...notificationPrefs, smsShipping: e.target.checked })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F]"></div>
+                          </label>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800">Email khuyến mãi & sự kiện</h4>
+                            <p className="text-xs text-slate-500">Cập nhật các chương trình ưu đãi, giảm giá và nhạc cụ mới</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={notificationPrefs.emailPromo}
+                              onChange={(e) => setNotificationPrefs({ ...notificationPrefs, emailPromo: e.target.checked })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002B1F]"></div>
+                          </label>
+                        </div>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={notificationPrefs.smsShipping}
-                          onChange={(e) => setNotificationPrefs({ ...notificationPrefs, smsShipping: e.target.checked })}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-900"></div>
-                      </label>
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800">Email khuyến mãi & sự kiện</h4>
-                        <p className="text-xs text-slate-500">Cập nhật các chương trình ưu đãi, giảm giá và nhạc cụ mới</p>
+                    {/* Section 3: Interface & Language */}
+                    <div className="border-t border-slate-100 pt-6">
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <span>⚙️</span> Tùy chọn hiển thị
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+                        <div className="p-4 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-colors">
+                          <label className="block text-xs font-bold text-slate-500 dark:text-emerald-100/50 mb-2">Giao diện (Theme)</label>
+                          <select
+                            value={theme}
+                            onChange={(e) => setThemeExplicitly(e.target.value as "light" | "dark")}
+                            className="w-full px-4 py-2 border border-slate-200 dark:border-primary-container/20 rounded-xl text-slate-800 dark:text-emerald-50 text-sm focus:outline-none bg-white dark:bg-[#06261d] transition-colors cursor-pointer"
+                          >
+                            <option value="light" className="bg-white dark:bg-[#06261d]">Chế độ sáng</option>
+                            <option value="dark" className="bg-white dark:bg-[#06261d]">Chế độ tối</option>
+                          </select>
+                        </div>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={notificationPrefs.emailPromo}
-                          onChange={(e) => setNotificationPrefs({ ...notificationPrefs, emailPromo: e.target.checked })}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-900"></div>
-                      </label>
                     </div>
                   </div>
-                </div>
-
-                {/* Section 3: Interface & Language */}
-                <div className="border-t border-slate-100 pt-6">
-                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <span>⚙️</span> Tùy chọn hiển thị
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <label className="block text-xs font-bold text-slate-500 mb-2">Ngôn ngữ giao diện</label>
-                      <select
-                        value={preferences.language}
-                        onChange={(e) => setPreferences({ ...preferences, language: e.target.value })}
-                        className="w-full px-4 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none bg-white"
-                      >
-                        <option value="vi">Tiếng Việt (Default)</option>
-                        <option value="en">English</option>
-                      </select>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <label className="block text-xs font-bold text-slate-500 mb-2">Giao diện (Theme)</label>
-                      <select
-                        value={preferences.theme}
-                        onChange={(e) => setPreferences({ ...preferences, theme: e.target.value })}
-                        className="w-full px-4 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none bg-white"
-                      >
-                        <option value="light">Chế độ sáng</option>
-                        <option value="dark">Chế độ tối (Bản thử nghiệm)</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
           </section>
 
         </div>
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes profileTabFade {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .profile-tab-fade {
+          animation: profileTabFade 0.25s ease-out;
+        }
+      `}} />
     </main>
   );
 }

@@ -8,6 +8,7 @@ import {
   DeleteCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
 
 type ProductItem = {
   PK?: string;
@@ -27,6 +28,8 @@ type ProductItem = {
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
+const eventBridge = new EventBridgeClient({});
+const eventBusName = process.env.EVENT_BUS_NAME;
 
 const jsonResponse = (
   statusCode: number,
@@ -337,6 +340,136 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         });
         return jsonResponse(200, orders);
       }
+    }
+
+    // -------------------------------------------------------------
+    // Route: /orders (GET - Admin/Staff Order Management)
+    // -------------------------------------------------------------
+    if (resource === "/orders" && method === "GET") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      const items: any[] = [];
+      let ExclusiveStartKey: Record<string, unknown> | undefined;
+
+      do {
+        const result = await dynamoDb.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(PK, :orderPrefix) AND SK = :metadataSk",
+            ExpressionAttributeValues: {
+              ":orderPrefix": "ORDER#",
+              ":metadataSk": "METADATA",
+            },
+            ExclusiveStartKey,
+          })
+        );
+
+        items.push(...(result.Items ?? []));
+        ExclusiveStartKey = result.LastEvaluatedKey;
+      } while (ExclusiveStartKey);
+
+      // Sắp xếp đơn hàng mới nhất lên đầu
+      const sortedOrders = items
+        .map((item) => {
+          const stripped = stripTableKeys(item);
+          return {
+            ...stripped,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          };
+        })
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return jsonResponse(200, sortedOrders);
+    }
+
+    // -------------------------------------------------------------
+    // Route: /orders/{id} (PUT - Admin/Staff Order Update)
+    // -------------------------------------------------------------
+    if (resource === "/orders/{id}" && method === "PUT") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { status } = JSON.parse(event.body);
+      if (!status) {
+        return jsonResponse(400, { message: "Status is required" });
+      }
+
+      // Lấy thông tin đơn hàng hiện tại
+      const getResult = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA",
+          },
+        })
+      );
+
+      if (!getResult.Item) {
+        return jsonResponse(404, { message: "Order not found" });
+      }
+
+      const order = getResult.Item;
+      const now = new Date().toISOString();
+
+      // Cập nhật trạng thái đơn hàng
+      const updatedOrder = {
+        ...order,
+        status,
+        updatedAt: now,
+      };
+
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: updatedOrder,
+        })
+      );
+
+      // Gửi sự kiện cập nhật trạng thái đơn hàng sang EventBridge để kích hoạt gửi Mail tự động
+      if (eventBusName) {
+        try {
+          console.log(`Publishing OrderUpdated event for order ${targetOrderId} to ${eventBusName}...`);
+          await eventBridge.send(
+            new PutEventsCommand({
+              Entries: [
+                {
+                  EventBusName: eventBusName,
+                  Source: "com.musicstore.order",
+                  DetailType: "OrderUpdated",
+                  Detail: JSON.stringify({
+                    orderId: targetOrderId,
+                    customer: order.customer,
+                    status: status,
+                    totalPrice: order.totalPrice,
+                  }),
+                },
+              ],
+            })
+          );
+        } catch (err) {
+          console.error("Failed to publish OrderUpdated event to EventBridge", err);
+        }
+      }
+
+      return jsonResponse(200, stripTableKeys(updatedOrder));
     }
 
     // -------------------------------------------------------------

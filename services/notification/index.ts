@@ -37,6 +37,9 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult | void>
 
         if (eventType === "OrderPlaced") {
           message = `[Music Store] Đơn hàng của bạn đã được đặt thành công! Mã đơn: ${detail.orderId}. Tổng thanh toán: ${Number(detail.totalPrice).toLocaleString("vi-VN")}đ. Phương thức: ${detail.paymentMethod}.`;
+        } else if (eventType === "OrderUpdated") {
+          const status = detail.status || "Cập nhật";
+          message = `[Music Store] Đơn hàng ${detail.orderId} của bạn đã được cập nhật trạng thái mới: ${status}.`;
         } else if (eventType === "PaymentSucceeded") {
           const orderId = detail.metadata?.orderId || detail.id || "N/A";
           const amount = detail.amount ? (detail.amount).toLocaleString("vi-VN") : "N/A";

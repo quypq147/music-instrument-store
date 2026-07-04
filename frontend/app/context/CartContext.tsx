@@ -4,7 +4,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useRef,
   useState,
   ReactNode,
 } from "react";
@@ -45,17 +44,22 @@ export function CartProvider({
 }: {
   children: ReactNode;
 }) {
-  const [cart, setCart] = useState<CartItem[]>(getStoredCart);
-  const [isHydrated] = useState(() => typeof window !== "undefined");
-  const shouldSkipInitialSync = useRef(true);
+  // Start empty on both server and client so the first client render matches
+  // the server-rendered HTML exactly; the real cart is loaded after mount to
+  // avoid a hydration mismatch when localStorage already has items.
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
+    const timer = setTimeout(() => {
+      setCart(getStoredCart());
+      setIsLoaded(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
-    if (shouldSkipInitialSync.current) {
-      shouldSkipInitialSync.current = false;
+  useEffect(() => {
+    if (!isLoaded) {
       return;
     }
 
@@ -63,7 +67,7 @@ export function CartProvider({
       "cart",
       JSON.stringify(cart)
     );
-  }, [cart, isHydrated]);
+  }, [cart, isLoaded]);
 
   const addToCart = (product: CartItem) => {
     setCart((currentCart) => {
