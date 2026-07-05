@@ -190,17 +190,40 @@ The implemented Lambda entrypoints are:
 
 To reduce conflicts while 5 people work in the same repository, use this workflow:
 
-1. `main` is the production-ready branch.
-2. `dev` is the team integration branch.
-3. Create each task branch from `dev`, for example `feature/cognito-auth` or `feature/stripe-checkout`.
-4. Write clear commit messages, for example `feat: add cognito auth` or `fix: stripe webhook bug`.
-5. Push your branch to GitHub and open a Pull Request against `dev`.
-6. Require at least 1 peer review before merging.
-7. Update architecture documentation or ADRs when infrastructure changes are made.
+1. `main` is the production-ready branch. It only receives merges from the `staging` branch.
+2. `staging` is the pre-release / staging branch, used for integration and User Acceptance Testing (UAT) before deploying to production. It only receives merges from the `dev` branch.
+3. `dev` is the team integration branch for the development environment.
+4. Create each task branch from `dev`, for example `feature/cognito-auth` or `feature/stripe-checkout`.
+5. Write clear commit messages adhering to Conventional Commits, for example `feat: add cognito auth` or `fix: stripe webhook bug`.
+6. Push your branch to GitHub and open a Pull Request against `dev`.
+7. Require at least 1 peer review before merging into `dev`.
+8. Once changes are stable on the dev environment, open a Pull Request to merge `dev` into `staging` for testing.
+9. After successful verification and acceptance testing on staging, merge `staging` into `main` to release to production.
+10. Update architecture documentation or ADRs when infrastructure changes are made.
+
+Workflow diagram:
+```mermaid
+gitGraph
+  commit id: "Initial Commit"
+  branch dev
+  checkout dev
+  commit id: "Dev Baseline"
+  branch feature/auth
+  checkout feature/auth
+  commit id: "feat: login UI"
+  commit id: "feat: cognito integration"
+  checkout dev
+  merge feature/auth id: "Merge PR"
+  branch staging
+  checkout staging
+  merge dev id: "UAT testing"
+  checkout main
+  merge staging id: "Release 1.0.0"
+```
 
 Recommended GitHub settings:
 
-- Protect `main` and `dev`.
+- Protect `main`, `staging`, and `dev`.
 - Require pull request approval before merging.
 - Require CI/CD checks such as lint, tests, or AWS Amplify build.
 

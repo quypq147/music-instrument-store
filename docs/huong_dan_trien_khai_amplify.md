@@ -12,13 +12,25 @@ Dự án sử dụng mô hình **Monorepo** được quản lý bằng **npm wor
 
 ```mermaid
 graph TD
-    Github[GitHub Repository] -->|Git Push / Webhook| Amplify[AWS Amplify Hosting]
-    Amplify -->|Đọc Cấu Hình| Spec[amplify.yml]
-    Amplify -->|Build Next.js Frontend| NextJS[Next.js SSR App]
-    NextJS -->|Gọi API| APIGW[AWS API Gateway]
-    NextJS -->|Xác thực| Cognito[AWS Cognito User Pool]
-    NextJS -->|Chatbot| Lex[AWS Lex Bot]
-    NextJS -->|Thanh toán| Stripe[Stripe API]
+    subgraph Git Branches
+        dev[Branch dev]
+        staging[Branch staging]
+        main[Branch main]
+    end
+
+    subgraph AWS Amplify Hosting
+        AmpDev[Dev Environment]
+        AmpStaging[Staging Environment]
+        AmpProd[Production Environment]
+    end
+
+    dev -->|Git Push / Webhook| AmpDev
+    staging -->|Git Push / Webhook| AmpStaging
+    main -->|Git Push / Webhook| AmpProd
+
+    AmpDev -->|Gọi API| APIGW_Dev[API Gateway Dev]
+    AmpStaging -->|Gọi API| APIGW_Staging[API Gateway Staging]
+    AmpProd -->|Gọi API| APIGW_Prod[API Gateway Prod]
 ```
 
 ---
@@ -37,11 +49,20 @@ Trước khi đưa Frontend lên Amplify, bạn **bắt buộc** phải triển 
 ---
 
 ### Bước 2: Kết Nối Repository Với AWS Amplify Hosting
+Để thiết lập các môi trường phát triển, tiền phát hành và chạy thực tế đồng nhất, ta sẽ kết nối 3 nhánh chính (`dev`, `staging`, `main`) tương ứng với các môi trường trên AWS Amplify:
+
 1. Đăng nhập vào [AWS Management Console](https://console.aws.amazon.com/).
 2. Mở dịch vụ **AWS Amplify**.
 3. Nhấp vào nút **Create new app** hoặc **Host web app**.
 4. Chọn nhà cung cấp Git của bạn (ví dụ: **GitHub**) và cấp quyền truy cập cho AWS Amplify.
-5. Chọn đúng repository chứa dự án **music-instrument-store** và nhánh cần deploy (ví dụ: `main` hoặc `dev`).
+5. Chọn đúng repository chứa dự án **music-instrument-store** và nhánh cần deploy:
+   - **Môi trường Dev**: Chọn nhánh `dev`.
+   - **Môi trường Staging**: Chọn nhánh `staging`.
+   - **Môi trường Production**: Chọn nhánh `main`.
+6. Để kết nối thêm một nhánh mới (ví dụ nhánh `staging` khi đã có app):
+   - Vào ứng dụng Amplify hiện có trên bảng điều khiển.
+   - Nhấp vào nút **Connect branch** ở phía trên bên phải.
+   - Chọn nhánh `staging` rồi nhấn Next để hoàn tất liên kết môi trường.
 
 ---
 
@@ -79,6 +100,10 @@ Next.js sử dụng cơ chế tĩnh hóa một số biến môi trường bắt 
 
 > [!WARNING]
 > Tuyệt đối không commit các file chứa key thật (như `.env.local`) lên Github. Chỉ cấu hình thông qua AWS Amplify Dashboard an toàn.
+
+> [!TIP]
+> **Cấu hình biến môi trường theo từng nhánh (Branch Override)**:
+> AWS Amplify cho phép bạn ghi đè (override) biến môi trường cụ thể cho từng nhánh. Trong phần **Environment variables**, bạn có thể bấm **Manage variables** -> **Add variable overrides**, chọn nhánh `staging` hoặc `main` để khai báo các Key API Gateway, Cognito, Stripe dành riêng cho từng môi trường (ví dụ sử dụng Stripe Production Key cho nhánh `main` và Stripe Test Key cho nhánh `staging`/`dev`).
 
 ---
 

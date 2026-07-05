@@ -122,4 +122,8 @@ npm run dev:web
 2.  **Sử dụng package-lock.json đồng nhất**:
     *   Không tự ý xóa `package-lock.json`. Luôn dùng `npm install` để cập nhật dependencies giúp lockfile luôn đồng bộ phiên bản chính xác cho tất cả mọi người.
 3.  **Deploy hạ tầng cần có context**:
-    *   Khi chạy CDK deploy thủ công ngoài script, nhớ chỉ rõ môi trường: `npx cdk deploy --all --context env=dev` hoặc chỉ định cụ thể môi trường của bạn để tránh xung đột tài nguyên chung.
+    *   Khi chạy CDK deploy thủ công ngoài script, nhớ chỉ rõ môi trường:
+        *   Môi trường Phát triển (Dev/Sandbox): `npx cdk deploy --all --context env=dev`
+        *   Môi trường Tiền phát hành (Staging): `npx cdk deploy --all --context env=staging`
+        *   Môi trường Chạy thực tế (Production): `npx cdk deploy --all --context env=prod`
+    *   Việc chỉ định cụ thể môi trường qua `--context env=...` giúp tránh ghi đè hoặc xung đột tài nguyên giữa các môi trường chung của nhóm.

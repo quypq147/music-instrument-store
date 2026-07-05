@@ -147,17 +147,40 @@ npm run lint
 
 Để hạn chế conflict khi 5 người cùng làm việc, nhóm thống nhất workflow:
 
-1. `main` là nhánh production-ready.
-2. `dev` là nhánh tích hợp chính của nhóm.
-3. Mỗi task tạo nhánh mới từ `dev`, ví dụ `feature/cognito-auth` hoặc `feature/stripe-checkout`.
-4. Commit với message rõ ràng, ví dụ `feat: add cognito auth` hoặc `fix: stripe webhook bug`.
-5. Push nhánh lên GitHub và tạo Pull Request trỏ vào `dev`.
-6. Yêu cầu ít nhất 1 thành viên khác review trước khi merge.
-7. Cập nhật tài liệu kiến trúc hoặc ADR nếu có thay đổi về infrastructure.
+1. `main` là nhánh chạy thực tế (Production-ready). Chỉ nhận code từ nhánh `staging`.
+2. `staging` là nhánh tiền phát hành (Pre-release / Staging), dùng để tích hợp và kiểm thử tích hợp cuối cùng (UAT) trước khi release lên production. Chỉ nhận code từ nhánh `dev`.
+3. `dev` là nhánh tích hợp chính của nhóm cho môi trường phát triển (Development).
+4. Mỗi task tạo nhánh mới từ `dev`, ví dụ `feature/cognito-auth` hoặc `feature/stripe-checkout`.
+5. Commit với message rõ ràng theo quy tắc Conventional Commits, ví dụ `feat: add cognito auth` hoặc `fix: stripe webhook bug`.
+6. Push nhánh lên GitHub và tạo Pull Request trỏ vào `dev`.
+7. Yêu cầu ít nhất 1 thành viên khác review trước khi merge vào `dev`.
+8. Sau khi chạy ổn định trên môi trường dev, tạo Pull Request để merge `dev` vào `staging` để kiểm thử.
+9. Sau khi kết quả kiểm thử trên môi trường staging đạt yêu cầu và được nghiệm thu, merge từ `staging` vào `main` để release lên production.
+10. Cập nhật tài liệu kiến trúc hoặc ADR nếu có thay đổi về infrastructure.
+
+Sơ đồ quy trình:
+```mermaid
+gitGraph
+  commit id: "Initial Commit"
+  branch dev
+  checkout dev
+  commit id: "Dev Baseline"
+  branch feature/auth
+  checkout feature/auth
+  commit id: "feat: login UI"
+  commit id: "feat: cognito integration"
+  checkout dev
+  merge feature/auth id: "Merge PR"
+  branch staging
+  checkout staging
+  merge dev id: "UAT testing"
+  checkout main
+  merge staging id: "Release 1.0.0"
+```
 
 Khuyến nghị cấu hình GitHub:
 
-- Protect `main` và `dev`.
+- Protect `main`, `staging` và `dev`.
 - Require pull request approval trước khi merge.
 - Require CI/CD checks như lint, test hoặc AWS Amplify build.
 
