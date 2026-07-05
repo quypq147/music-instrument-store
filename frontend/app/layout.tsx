@@ -1,6 +1,7 @@
 import "./globals.css";
 import { CartProvider } from "./context/CartContext";
 import { ToastProvider } from "./context/ToastContext";
+import { WishlistProvider } from "./context/WishlistContext";
 import { ConfirmDialogProvider } from "./context/ConfirmDialogContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { Playfair_Display, Inter } from "next/font/google";
@@ -34,9 +35,11 @@ export default function RootLayout({
         <AmplifyConfig>
           <ThemeProvider>
             <ToastProvider>
-              <ConfirmDialogProvider>
-                <CartProvider>{children}</CartProvider>
-              </ConfirmDialogProvider>
+              <WishlistProvider>
+                <ConfirmDialogProvider>
+                  <CartProvider>{children}</CartProvider>
+                </ConfirmDialogProvider>
+              </WishlistProvider>
             </ToastProvider>
           </ThemeProvider>
         </AmplifyConfig>

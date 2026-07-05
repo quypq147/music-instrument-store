@@ -19,13 +19,21 @@ export default function FloatingContacts() {
   if (isChatOpen) return null;
 
   return (
-    <div style={{ position: 'fixed', bottom: '100px', right: '30px', display: 'flex', flexDirection: 'column', gap: '15px', zIndex: 9999 }}>
+    <div className="fixed bottom-25 right-7.5 flex flex-col gap-4 z-[9999]">
       {/* Phone */}
-      <Link href="tel:0912191218" style={{ width: '60px', height: '60px', backgroundColor: '#4CAF50', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 25px rgba(76, 175, 80, 0.3)', transition: 'transform 0.2s', color: 'white' }}>
+      <Link
+        href="tel:0912191218"
+        className="w-15 h-15 bg-[#4CAF50] rounded-full flex items-center justify-center text-white shadow-[0_10px_25px_rgba(76,175,80,0.3)] transition-transform hover:scale-105"
+      >
         <Phone width="24" height="24" />
       </Link>
       {/* Zalo */}
-      <Link href="https://zalo.me/0912191218" target="_blank" rel="noopener noreferrer" style={{ width: '60px', height: '60px', backgroundColor: '#0068FF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 25px rgba(0, 104, 255, 0.3)', transition: 'transform 0.2s', color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px', fontFamily: 'var(--font-sans), sans-serif' }}>
+      <Link
+        href="https://zalo.me/0912191218"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="w-15 h-15 bg-[#0068FF] rounded-full flex items-center justify-center text-white no-underline font-bold text-sm font-sans shadow-[0_10px_25px_rgba(0,104,255,0.3)] transition-transform hover:scale-105"
+      >
         Zalo
       </Link>
     </div>

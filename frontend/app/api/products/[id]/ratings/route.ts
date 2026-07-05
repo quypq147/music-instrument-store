@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 type Params = {
   params: Promise<{
@@ -79,6 +80,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         { status: res.status }
       );
     }
+
+    // Đánh giá vừa ghi làm thay đổi averageRating/ratingCount trên sản phẩm — xoá cache ISR
+    // ngay lập tức thay vì chờ hết 5 phút revalidate, để trang chi tiết và danh sách/filter
+    // sản phẩm phản ánh đúng số liệu mới ngay khi F5.
+    revalidateTag(`product-${id}`, "max");
+    revalidateTag("products", "max");
 
     return NextResponse.json(data, { status: 201 });
   } catch (error) {

@@ -107,6 +107,7 @@ export async function getProducts(): Promise<ProductsResult> {
     const response = await fetch(`${apiUrl}/products`, {
       next: {
         revalidate: 300,
+        tags: ["products"],
       },
     });
 
@@ -159,6 +160,7 @@ export async function getProduct(id: string): Promise<ProductResult> {
     const response = await fetch(`${apiUrl}/products/${encodeURIComponent(id)}`, {
       next: {
         revalidate: 300,
+        tags: ["products", `product-${id}`],
       },
     });
 

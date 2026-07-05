@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Heart, Star, ShoppingCart } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import { useToast } from "../../context/ToastContext";
+import { useWishlist } from "../../context/WishlistContext";
 import type { Product } from "../../../types/product";
 
 type ProductCardProps = {
@@ -21,8 +22,9 @@ const currencyFormatter = new Intl.NumberFormat("vi-VN", {
 export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart();
   const { showToast } = useToast();
+  const { isWishlisted, toggleWishlist } = useWishlist();
   const [isHovered, setIsHovered] = useState(false);
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const wishlisted = isWishlisted(product.id);
 
   const isOutOfStock = product.inStock === false;
 
@@ -46,15 +48,8 @@ export function ProductCard({ product }: ProductCardProps) {
   const handleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    const newWishlisted = !isWishlisted;
-    setIsWishlisted(newWishlisted);
-    
-    if (newWishlisted) {
-      showToast(`Đã thêm ${product.name} vào danh sách yêu thích!`, "success");
-    } else {
-      showToast(`Đã xóa ${product.name} khỏi danh sách yêu thích!`, "info");
-    }
+
+    toggleWishlist({ id: product.id, name: product.name });
   };
 
   const averageRating = product.averageRating || 0;
@@ -91,10 +86,10 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Wishlist Heart */}
         <button
           onClick={handleWishlist}
-          aria-label={isWishlisted ? "Xóa khỏi danh sách yêu thích" : "Thêm vào danh sách yêu thích"}
+          aria-label={wishlisted ? "Xóa khỏi danh sách yêu thích" : "Thêm vào danh sách yêu thích"}
           className="absolute top-4 right-4 z-10 flex items-center justify-center transition-colors"
         >
-          <Heart width="20" height="20" fill={isWishlisted ? "#A36B2B" : "none"} stroke="#A36B2B" strokeWidth={1.5} />
+          <Heart width="20" height="20" fill={wishlisted ? "#A36B2B" : "none"} stroke="#A36B2B" strokeWidth={1.5} />
         </button>
       </Link>
 

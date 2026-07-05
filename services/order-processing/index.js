@@ -59,24 +59,6 @@ var handler = async (event) => {
           }
         })
       );
-      if (order.userId && Array.isArray(order.items)) {
-        for (const item of order.items) {
-          if (item && item.productId) {
-            await dynamoDb.send(
-              new import_lib_dynamodb.PutCommand({
-                TableName: tableName,
-                Item: {
-                  PK: `USER#${order.userId}`,
-                  SK: `BOUGHT#${item.productId}`,
-                  productId: item.productId,
-                  orderId,
-                  purchasedAt: order.createdAt ?? now
-                }
-              })
-            );
-          }
-        }
-      }
       if (eventBusName) {
         console.log(`Publishing OrderPlaced event for order ${orderId} to ${eventBusName}...`);
         await eventBridge.send(

@@ -1,4 +1,52 @@
+"use client";
+
+import { useState } from "react";
+import { useToast } from "../../context/ToastContext";
+
 export default function ContactPage() {
+  const { showToast } = useToast();
+  const [form, setForm] = useState({ name: "", phone: "", email: "", message: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleChange = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!form.name.trim() || !form.message.trim()) {
+      showToast("Vui lòng nhập họ tên và nội dung cần tư vấn.", "warning");
+      return;
+    }
+    if (!form.phone.trim() && !form.email.trim()) {
+      showToast("Vui lòng nhập ít nhất một cách liên hệ (số điện thoại hoặc email).", "warning");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Gửi yêu cầu liên hệ thất bại. Vui lòng thử lại.", "error");
+      } else {
+        showToast("Đã gửi yêu cầu liên hệ thành công! Chúng tôi sẽ phản hồi sớm nhất.", "success");
+        setForm({ name: "", phone: "", email: "", message: "" });
+      }
+    } catch (error) {
+      console.error("Contact form submission error:", error);
+      showToast("Đã xảy ra lỗi khi kết nối với máy chủ.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-surface-cream dark:bg-[#02140f] pt-16 md:pt-20 transition-colors duration-300">
       <section className="relative bg-[#001A12] text-white py-24 px-6 overflow-hidden">
@@ -26,16 +74,45 @@ export default function ContactPage() {
             Gửi yêu cầu liên hệ
           </h2>
 
-          <div className="mt-6 space-y-4 font-sans">
-            <input className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all" placeholder="Họ và tên" />
-            <input className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all" placeholder="Số điện thoại" />
-            <input className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all" placeholder="Email" />
-            <textarea className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 h-32 outline-none focus:border-primary transition-all" placeholder="Nội dung cần tư vấn" />
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4 font-sans">
+            <input
+              className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all disabled:opacity-60"
+              placeholder="Họ và tên"
+              value={form.name}
+              onChange={handleChange("name")}
+              disabled={isSubmitting}
+            />
+            <input
+              className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all disabled:opacity-60"
+              placeholder="Số điện thoại"
+              value={form.phone}
+              onChange={handleChange("phone")}
+              disabled={isSubmitting}
+            />
+            <input
+              type="email"
+              className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all disabled:opacity-60"
+              placeholder="Email"
+              value={form.email}
+              onChange={handleChange("email")}
+              disabled={isSubmitting}
+            />
+            <textarea
+              className="w-full border border-gray-200 dark:border-primary-container/30 bg-white dark:bg-[#031d16] text-gray-700 dark:text-emerald-50 rounded-xl px-4 py-3 h-32 outline-none focus:border-primary transition-all disabled:opacity-60"
+              placeholder="Nội dung cần tư vấn"
+              value={form.message}
+              onChange={handleChange("message")}
+              disabled={isSubmitting}
+            />
 
-            <button className="w-full bg-primary hover:bg-primary-container text-white dark:text-[#002B1F] dark:bg-secondary dark:hover:bg-secondary-container py-4 rounded-xl font-bold tracking-widest uppercase transition-colors shadow-lg cursor-pointer">
-              Gửi Liên Hệ
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-primary hover:bg-primary-container text-white dark:text-[#002B1F] dark:bg-secondary dark:hover:bg-secondary-container py-4 rounded-xl font-bold tracking-widest uppercase transition-colors shadow-lg cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Đang Gửi..." : "Gửi Liên Hệ"}
             </button>
-          </div>
+          </form>
         </div>
 
         <div className="bg-[#001A12] rounded-3xl shadow-xl p-8 text-white border border-[#DF9E47]/30">

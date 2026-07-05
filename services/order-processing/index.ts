@@ -52,25 +52,9 @@ export const handler: SQSHandler = async (event) => {
         })
       );
 
-      // Nếu có userId, lưu thông tin sản phẩm đã mua vào database của user đó
-      if (order.userId && Array.isArray(order.items)) {
-        for (const item of order.items) {
-          if (item && item.productId) {
-            await dynamoDb.send(
-              new PutCommand({
-                TableName: tableName,
-                Item: {
-                  PK: `USER#${order.userId}`,
-                  SK: `BOUGHT#${item.productId}`,
-                  productId: item.productId,
-                  orderId: orderId,
-                  purchasedAt: order.createdAt ?? now,
-                },
-              })
-            );
-          }
-        }
-      }
+      // Lưu ý: KHÔNG ghi BOUGHT#{productId} ở đây nữa — quyền đánh giá chỉ được cấp khi đơn
+      // chuyển sang trạng thái "Đánh giá" (đã giao), xem services/product-api/index.ts route
+      // PUT /orders/{id}, để tránh cho phép đánh giá khi đơn chưa thanh toán/giao hoặc đã bị hủy.
 
       // Bắn sự kiện OrderPlaced sang EventBridge để xử lý gửi thông báo bất đồng bộ
       if (eventBusName) {

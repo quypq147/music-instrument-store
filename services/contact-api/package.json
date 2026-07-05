@@ -1,0 +1,16 @@
+{
+  "name": "@music-store/contact-api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "echo \"built via root build:lambdas (esbuild)\"",
+    "test": "echo \"No tests configured for contact-api\""
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1075.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152"
+  }
+}

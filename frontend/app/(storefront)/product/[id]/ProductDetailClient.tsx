@@ -24,8 +24,13 @@ type Rating = {
   userName: string;
   rating: number;
   comment: string;
+  images?: string[];
   createdAt: string;
 };
+
+const MAX_RATING_IMAGES = 3;
+const MAX_RATING_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_RATING_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 type Comment = {
   commentId: string;
@@ -73,6 +78,8 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [ratingInput, setRatingInput] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
+  const [ratingImages, setRatingImages] = useState<File[]>([]);
+  const [ratingImagePreviews, setRatingImagePreviews] = useState<string[]>([]);
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [averageRating, setAverageRating] = useState(product.averageRating || 0);
   const [ratingCount, setRatingCount] = useState(product.ratingCount || 0);
@@ -89,6 +96,15 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
 
   // Related Products State
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+
+  // Sinh/dọn preview cho ảnh đính kèm đánh giá đã chọn (chưa upload)
+  useEffect(() => {
+    const urls = ratingImages.map((file) => URL.createObjectURL(file));
+    setRatingImagePreviews(urls);
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [ratingImages]);
 
   const fetchWishlistStatus = async () => {
     try {
@@ -256,6 +272,63 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     }
   };
 
+  const handleRatingImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // cho phép chọn lại đúng file đó lần nữa nếu cần
+
+    if (files.length + ratingImages.length > MAX_RATING_IMAGES) {
+      showToast(`Chỉ được đính kèm tối đa ${MAX_RATING_IMAGES} ảnh`, "warning");
+      return;
+    }
+
+    const validFiles: File[] = [];
+    for (const file of files) {
+      if (!ALLOWED_RATING_IMAGE_TYPES.includes(file.type)) {
+        showToast(`${file.name}: chỉ hỗ trợ ảnh JPEG, PNG hoặc WEBP`, "warning");
+        continue;
+      }
+      if (file.size > MAX_RATING_IMAGE_SIZE_BYTES) {
+        showToast(`${file.name}: dung lượng vượt quá 5MB`, "warning");
+        continue;
+      }
+      validFiles.push(file);
+    }
+    setRatingImages((prev) => [...prev, ...validFiles]);
+  };
+
+  const handleRemoveRatingImage = (index: number) => {
+    setRatingImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadRatingImages = async (files: File[], token: string): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const file of files) {
+      const presignRes = await fetch(`/api/products/${product.id}/ratings/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fileType: file.type }),
+      });
+      const presignData = await presignRes.json();
+      if (!presignRes.ok) {
+        throw new Error(presignData.error || "Không thể tạo link tải ảnh lên");
+      }
+
+      const { uploadUrl, fields, publicUrl } = presignData;
+      const formData = new FormData();
+      Object.entries(fields as Record<string, string>).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+      formData.append("file", file);
+
+      const uploadRes = await fetch(uploadUrl, { method: "POST", body: formData });
+      if (!uploadRes.ok) {
+        throw new Error(`Tải ảnh ${file.name} lên thất bại`);
+      }
+      urls.push(publicUrl);
+    }
+    return urls;
+  };
+
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -269,6 +342,8 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
       const token = session.tokens?.idToken?.toString();
       if (!token) throw new Error("No token found");
 
+      const images = ratingImages.length > 0 ? await uploadRatingImages(ratingImages, token) : [];
+
       const res = await fetch(`/api/products/${product.id}/ratings`, {
         method: "POST",
         headers: {
@@ -278,6 +353,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         body: JSON.stringify({
           rating: ratingInput,
           comment: ratingComment,
+          images,
         }),
       });
 
@@ -287,11 +363,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
       } else {
         showToast("Cảm ơn bạn đã gửi đánh giá!", "success");
         setRatingComment("");
+        setRatingImages([]);
         fetchRatingsAndComments();
       }
     } catch (err) {
       console.error("Rating submission error:", err);
-      showToast("Đã xảy ra lỗi khi gửi đánh giá.", "error");
+      showToast(err instanceof Error ? err.message : "Đã xảy ra lỗi khi gửi đánh giá.", "error");
     } finally {
       setIsSubmittingRating(false);
     }
@@ -527,6 +604,38 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                       />
                     </div>
 
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-emerald-100/70 mb-2">
+                        Ảnh đính kèm (tối đa {MAX_RATING_IMAGES} ảnh, mỗi ảnh &le; 5MB):
+                      </label>
+                      {ratingImagePreviews.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {ratingImagePreviews.map((src, index) => (
+                            <div key={src} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-primary-container/30">
+                              <Image src={src} alt={`Ảnh đính kèm ${index + 1}`} fill className="object-cover" unoptimized />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRatingImage(index)}
+                                className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] leading-none cursor-pointer"
+                                aria-label="Xoá ảnh"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {ratingImages.length < MAX_RATING_IMAGES && (
+                        <input
+                          type="file"
+                          accept={ALLOWED_RATING_IMAGE_TYPES.join(",")}
+                          multiple
+                          onChange={handleRatingImagesChange}
+                          className="w-full text-xs text-slate-500 dark:text-emerald-100/50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-white dark:file:bg-[#06261d] file:text-[#A36B2B] file:cursor-pointer cursor-pointer"
+                        />
+                      )}
+                    </div>
+
                     <button
                       type="submit"
                       disabled={isSubmittingRating}
@@ -570,6 +679,15 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                           <p className="text-slate-600 dark:text-emerald-100/70 text-sm">{item.comment}</p>
                         ) : (
                           <p className="text-slate-400 dark:text-emerald-100/30 italic text-xs">Không có bình luận chi tiết.</p>
+                        )}
+                        {item.images && item.images.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {item.images.map((src, imgIndex) => (
+                              <a key={src} href={src} target="_blank" rel="noopener noreferrer" className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-primary-container/30 block">
+                                <Image src={src} alt={`Ảnh đánh giá ${imgIndex + 1} của ${item.userName}`} fill className="object-cover" unoptimized />
+                              </a>
+                            ))}
+                          </div>
                         )}
                       </div>
                     ))}

@@ -25,11 +25,22 @@ module.exports = __toCommonJS(index_exports);
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_client_eventbridge = require("@aws-sdk/client-eventbridge");
+var import_client_s3 = require("@aws-sdk/client-s3");
+var import_s3_presigned_post = require("@aws-sdk/s3-presigned-post");
 var import_node_crypto = require("node:crypto");
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(new import_client_dynamodb.DynamoDBClient({}));
 var tableName = process.env.TABLE_NAME;
 var eventBridge = new import_client_eventbridge.EventBridgeClient({});
 var eventBusName = process.env.EVENT_BUS_NAME;
+var s3Client = new import_client_s3.S3Client({});
+var bucketName = process.env.BUCKET_NAME;
+var REVIEW_IMAGE_ALLOWED_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp"
+};
+var REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+var REVIEW_IMAGE_MAX_COUNT = 3;
 var jsonResponse = (statusCode, body) => ({
   statusCode,
   headers: {
@@ -153,6 +164,17 @@ var handler = async (event) => {
         if (isNaN(rating) || rating < 1 || rating > 5) {
           return jsonResponse(400, { message: "S\u1ED1 sao \u0111\xE1nh gi\xE1 ph\u1EA3i t\u1EEB 1 \u0111\u1EBFn 5" });
         }
+        const rawImages = Array.isArray(body.images) ? body.images : [];
+        const images = rawImages.filter((url) => typeof url === "string" && url.trim().length > 0);
+        if (images.length > REVIEW_IMAGE_MAX_COUNT) {
+          return jsonResponse(400, { message: `Ch\u1EC9 \u0111\u01B0\u1EE3c \u0111\xEDnh k\xE8m t\u1ED1i \u0111a ${REVIEW_IMAGE_MAX_COUNT} \u1EA3nh` });
+        }
+        const invalidImage = images.find(
+          (url) => bucketName && !url.startsWith(`https://${bucketName}.s3.`)
+        );
+        if (invalidImage) {
+          return jsonResponse(400, { message: "\u0110\u01B0\u1EDDng d\u1EABn \u1EA3nh kh\xF4ng h\u1EE3p l\u1EC7" });
+        }
         const now = (/* @__PURE__ */ new Date()).toISOString();
         await dynamoDb.send(
           new import_lib_dynamodb.PutCommand({
@@ -162,6 +184,7 @@ var handler = async (event) => {
               SK: `RATING#${userId}`,
               rating,
               comment,
+              images,
               userId,
               userName,
               createdAt: now
@@ -203,6 +226,61 @@ var handler = async (event) => {
         }
         return jsonResponse(201, { message: "\u0110\xE1nh gi\xE1 s\u1EA3n ph\u1EA9m th\xE0nh c\xF4ng!" });
       }
+    }
+    if (resource === "/products/{id}/ratings/upload-url" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: \u0110\u0103ng nh\u1EADp \u0111\u1EC3 th\u1EF1c hi\u1EC7n \u0111\xE1nh gi\xE1" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+      const productId2 = getProductId(event.path, event.pathParameters?.id);
+      if (!productId2) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+      const boughtCheck = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: `BOUGHT#${productId2}`
+          }
+        })
+      );
+      if (!boughtCheck.Item) {
+        return jsonResponse(403, {
+          message: "B\u1EA1n ch\u1EC9 c\xF3 th\u1EC3 \u0111\xEDnh k\xE8m \u1EA3nh sau khi \u0111\xE3 mua h\xE0ng th\xE0nh c\xF4ng."
+        });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "\u0110\u1ECBnh d\u1EA1ng \u1EA3nh kh\xF4ng h\u1EE3p l\u1EC7. Ch\u1EC9 ch\u1EA5p nh\u1EADn JPEG, PNG ho\u1EB7c WEBP."
+        });
+      }
+      const key = `reviews/${productId2}/${userId}/${(0, import_node_crypto.randomUUID)()}.${extension}`;
+      const { url, fields } = await (0, import_s3_presigned_post.createPresignedPost)(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType]
+        ],
+        Fields: {
+          "Content-Type": fileType
+        },
+        Expires: 60
+      });
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES
+      });
     }
     if (resource === "/products/{id}/comments") {
       const productId2 = getProductId(event.path, event.pathParameters?.id);
@@ -459,6 +537,24 @@ var handler = async (event) => {
             );
           } catch (err) {
             console.error(`Failed to increment soldCount for product ${item.productId}`, err);
+          }
+          if (order.userId) {
+            try {
+              await dynamoDb.send(
+                new import_lib_dynamodb.PutCommand({
+                  TableName: tableName,
+                  Item: {
+                    PK: `USER#${order.userId}`,
+                    SK: `BOUGHT#${item.productId}`,
+                    productId: item.productId,
+                    orderId: targetOrderId,
+                    purchasedAt: now
+                  }
+                })
+              );
+            } catch (err) {
+              console.error(`Failed to grant review eligibility for product ${item.productId}`, err);
+            }
           }
         }
       }

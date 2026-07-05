@@ -192,7 +192,7 @@ export default function Register() {
 
   return (
     <main
-      className={`min-h-screen transition-colors duration-500 flex flex-col items-center justify-center p-4 md:py-12 md:px-8 font-sans relative ${theme === "dark" ? "dark bg-[#02140f]" : "bg-surface-cream"}`}
+      className={`min-h-screen transition-colors duration-500 flex flex-col items-center justify-start p-4 pt-6 md:pt-6 md:pb-6 md:px-8 font-sans relative ${theme === "dark" ? "dark bg-[#02140f]" : "bg-surface-cream"}`}
       style={{
         backgroundImage: theme === "dark"
           ? 'radial-gradient(circle at 10% 10%, rgba(217, 119, 6, 0.04) 0%, transparent 45%), radial-gradient(circle at 90% 90%, rgba(6, 78, 59, 0.12) 0%, transparent 55%)'
@@ -215,34 +215,34 @@ export default function Register() {
         className="absolute top-6 right-6 p-3 bg-white dark:bg-[#06261d] text-primary dark:text-[#80bea6] rounded-md border border-border-subtle dark:border-primary-container/30 hover:border-secondary dark:hover:border-secondary hover:text-secondary dark:hover:text-secondary transition-all shadow-sm cursor-pointer z-50 focus:outline-none flex items-center justify-center"
         aria-label="Toggle theme"
       >
-        {theme === "dark" ? <Sun className="w-5 h-5 text-secondary animate-pulse" /> : <Moon className="w-5 h-5" />}
+        {theme === "dark" ? <Sun className="w-5 h-5 text-secondary dark:text-[#fe932c] animate-pulse" /> : <Moon className="w-5 h-5" />}
       </button>
 
       {/* MAIN REGISTER CARD */}
       <div className="w-full max-w-[1100px] min-h-0 md:min-h-[650px] bg-white dark:bg-[#06261d] rounded-md border border-border-subtle dark:border-primary-container/20 shadow-[0_15px_40px_rgba(0,0,0,0.03)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.25)] flex flex-col md:flex-row overflow-hidden relative z-10">
         
         {/* LEFT PANEL: Branding & Image */}
-        <div className="w-full md:w-[42%] bg-primary dark:bg-[#002117] relative flex flex-col justify-between p-12 overflow-hidden min-h-[350px] md:min-h-0">
-          
+        <div className="w-full md:w-[42%] bg-primary dark:bg-[#002117] relative flex flex-col justify-between p-6 md:p-12 overflow-hidden min-h-[140px] md:min-h-0">
+
           {/* Top Decorative Line & Logo */}
           <div className="relative z-20 flex flex-col items-center text-center">
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center gap-2 mb-2 md:mb-6">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.58 20 4 16.42 4 12C4 7.58 7.58 4 12 4C16.42 4 20 7.58 20 12C20 16.42 16.42 20 12 20Z" fill="#D97706"/>
                 <circle cx="12" cy="12" r="4" fill="#D97706"/>
               </svg>
               <span className="font-serif text-xl font-bold tracking-widest text-white uppercase">AUREATE FOREST</span>
             </div>
-            
-            <div className="w-8 h-[1px] bg-secondary dark:bg-secondary-container mb-4"></div>
-            
+
+            <div className="w-8 h-[1px] bg-secondary dark:bg-secondary-container mb-2 md:mb-4"></div>
+
             <p className="text-secondary dark:text-secondary-container text-sm tracking-wider font-medium font-serif italic">
               Âm nhạc kết nối đam mê
             </p>
           </div>
 
           {/* Bottom Branding info */}
-          <div className="relative z-20 text-center md:text-left mt-auto">
+          <div className="hidden md:block relative z-20 text-center md:text-left mt-auto">
             <h2 className="font-serif text-2xl text-white dark:text-emerald-50 font-semibold leading-tight mb-2">
               Chế tác cho tâm hồn của âm thanh.
             </h2>
@@ -266,10 +266,10 @@ export default function Register() {
         </div>
 
         {/* RIGHT PANEL: Form */}
-        <div className="w-full md:w-[58%] p-8 md:p-12 lg:px-16 flex flex-col justify-center">
+        <div className="w-full md:w-[58%] p-6 md:py-8 md:px-12 lg:px-16 flex flex-col justify-center">
           {step === "REGISTER" ? (
             <>
-              <div className="mb-6">
+              <div className="mb-4 md:mb-4">
                 <span className="text-[10px] font-bold text-secondary dark:text-[#fe932c] uppercase tracking-[0.2em] mb-1.5 block">
                   Đăng ký tài khoản
                 </span>
@@ -281,32 +281,54 @@ export default function Register() {
                 </p>
               </div>
 
-              <form onSubmit={handleRegister} className="space-y-4">
-                {/* Full name */}
-                <div>
-                  <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1.5" htmlFor="full-name">
-                    Họ và tên
-                  </label>
-                  <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
-                    <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
-                      <User className="w-4 h-4" />
+              <form onSubmit={handleRegister} className="space-y-3 md:space-y-4">
+                {/* Full name + Phone (gộp 1 hàng từ sm: trở lên để giảm chiều cao form) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1" htmlFor="full-name">
+                      Họ và tên
+                    </label>
+                    <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
+                      <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <input
+                        className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 disabled:opacity-60"
+                        id="full-name"
+                        placeholder="Nguyễn Văn A"
+                        type="text"
+                        required
+                        value={user.name}
+                        onChange={(e) => setUser({ ...user, name: e.target.value })}
+                        disabled={isSubmitting}
+                      />
                     </div>
-                    <input
-                      className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 disabled:opacity-60"
-                      id="full-name"
-                      placeholder="Nguyễn Văn A"
-                      type="text"
-                      required
-                      value={user.name}
-                      onChange={(e) => setUser({ ...user, name: e.target.value })}
-                      disabled={isSubmitting}
-                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1" htmlFor="phone">
+                      Số điện thoại
+                    </label>
+                    <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
+                      <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
+                        <Phone className="w-4 h-4" />
+                      </div>
+                      <input
+                        className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 disabled:opacity-60"
+                        id="phone"
+                        placeholder="090 123 4567"
+                        type="tel"
+                        value={user.phone}
+                        onChange={(e) => setUser({ ...user, phone: e.target.value })}
+                        disabled={isSubmitting}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Email */}
                 <div>
-                  <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1.5" htmlFor="email">
+                  <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1" htmlFor="email">
                     Email
                   </label>
                   <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
@@ -326,82 +348,62 @@ export default function Register() {
                   </div>
                 </div>
 
-                {/* Phone */}
-                <div>
-                  <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1.5" htmlFor="phone">
-                    Số điện thoại
-                  </label>
-                  <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
-                    <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
-                      <Phone className="w-4 h-4" />
+                {/* Password + Confirm Password (gộp 1 hàng từ sm: trở lên) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1" htmlFor="password">
+                      Mật khẩu
+                    </label>
+                    <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
+                      <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <input
+                        className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 pr-10 disabled:opacity-60"
+                        id="password"
+                        placeholder="••••••••"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={user.password}
+                        onChange={(e) => setUser({ ...user, password: e.target.value })}
+                        disabled={isSubmitting}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-emerald-700 hover:text-gray-600 dark:hover:text-emerald-500 focus:outline-none cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    <input
-                      className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 disabled:opacity-60"
-                      id="phone"
-                      placeholder="090 123 4567"
-                      type="tel"
-                      value={user.phone}
-                      onChange={(e) => setUser({ ...user, phone: e.target.value })}
-                      disabled={isSubmitting}
-                    />
                   </div>
-                </div>
 
-                {/* Password */}
-                <div>
-                  <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1.5" htmlFor="password">
-                    Mật khẩu
-                  </label>
-                  <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
-                    <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
-                      <Lock className="w-4 h-4" />
+                  <div>
+                    <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1" htmlFor="confirmPassword">
+                      Nhập lại mật khẩu
+                    </label>
+                    <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
+                      <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <input
+                        className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 pr-10 disabled:opacity-60"
+                        id="confirmPassword"
+                        placeholder="••••••••"
+                        type={showConfirmPassword ? "text" : "password"}
+                        required
+                        value={user.confirmPassword}
+                        onChange={(e) => setUser({ ...user, confirmPassword: e.target.value })}
+                        disabled={isSubmitting}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-emerald-700 hover:text-gray-600 dark:hover:text-emerald-500 focus:outline-none cursor-pointer"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    <input
-                      className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 pr-10 disabled:opacity-60"
-                      id="password"
-                      placeholder="••••••••"
-                      type={showPassword ? "text" : "password"}
-                      required
-                      value={user.password}
-                      onChange={(e) => setUser({ ...user, password: e.target.value })}
-                      disabled={isSubmitting}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-emerald-700 hover:text-gray-600 dark:hover:text-emerald-500 focus:outline-none cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Confirm Password */}
-                <div>
-                  <label className="text-[10px] font-bold text-primary dark:text-[#80bea6] uppercase tracking-[0.15em] block mb-1.5" htmlFor="confirmPassword">
-                    Nhập lại mật khẩu
-                  </label>
-                  <div className="relative flex items-center border border-border-subtle dark:border-emerald-900/40 rounded-sm bg-white dark:bg-[#031d16] focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary transition-all">
-                    <div className="pl-3.5 text-gray-400 dark:text-emerald-700">
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <input
-                      className="flex-1 py-2.5 px-3 bg-transparent text-sm text-[#1F2937] dark:text-emerald-50 outline-none placeholder:text-gray-400 dark:placeholder:text-emerald-900/60 pr-10 disabled:opacity-60"
-                      id="confirmPassword"
-                      placeholder="••••••••"
-                      type={showConfirmPassword ? "text" : "password"}
-                      required
-                      value={user.confirmPassword}
-                      onChange={(e) => setUser({ ...user, confirmPassword: e.target.value })}
-                      disabled={isSubmitting}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-emerald-700 hover:text-gray-600 dark:hover:text-emerald-500 focus:outline-none cursor-pointer"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
                   </div>
                 </div>
 
@@ -431,7 +433,7 @@ export default function Register() {
               </form>
 
               {/* Social Login Separator */}
-              <div className="relative my-6">
+              <div className="relative my-4 md:my-5">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-border-subtle dark:border-emerald-900/40"></div>
                 </div>
@@ -472,7 +474,7 @@ export default function Register() {
               </div>
 
               {/* Login Page Redirect */}
-              <div className="mt-8 text-center flex items-center justify-center gap-2 text-sm">
+              <div className="mt-4 md:mt-5 text-center flex items-center justify-center gap-2 text-sm">
                 <span className="text-gray-500 dark:text-emerald-200/50">Đã có tài khoản?</span>
                 <Link href="/login" className="text-secondary dark:text-[#fe932c] hover:text-gold-muted dark:hover:text-amber-400 font-bold transition-colors">
                   Đăng nhập ngay
@@ -533,15 +535,15 @@ export default function Register() {
             </div>
           )}
 
-          <div className="mt-8 flex items-center justify-center gap-2 text-gray-300 dark:text-emerald-900/30">
-            <Music className="w-3 h-3 text-secondary" />
+          <div className="mt-4 md:mt-6 flex items-center justify-center gap-2 text-gray-300 dark:text-emerald-900/30">
+            <Music className="w-3 h-3 text-secondary dark:text-[#fe932c]" />
             <span className="text-[9px] font-bold tracking-[0.25em] uppercase text-gray-400 dark:text-emerald-200/30">NHÓM TTTN MUSIC</span>
           </div>
 
         </div>
       </div>
 
-      <p className="mt-6 text-gray-400 dark:text-emerald-900/40 text-xs z-10 relative">
+      <p className="mt-3 md:mt-4 text-gray-400 dark:text-emerald-900/40 text-xs z-10 relative">
         © 2026 Nhóm TTTN Music. All rights reserved.
       </p>
     </main>

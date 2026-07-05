@@ -10,6 +10,8 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+import { S3Client } from "@aws-sdk/client-s3";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { randomUUID } from "node:crypto";
 
 type ProductItem = {
@@ -38,6 +40,16 @@ const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
 const eventBridge = new EventBridgeClient({});
 const eventBusName = process.env.EVENT_BUS_NAME;
+const s3Client = new S3Client({});
+const bucketName = process.env.BUCKET_NAME;
+
+const REVIEW_IMAGE_ALLOWED_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+const REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5MB/ảnh
+const REVIEW_IMAGE_MAX_COUNT = 3; // tối đa 3 ảnh/đánh giá
 
 const jsonResponse = (
   statusCode: number,
@@ -192,6 +204,18 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           return jsonResponse(400, { message: "Số sao đánh giá phải từ 1 đến 5" });
         }
 
+        const rawImages = Array.isArray(body.images) ? body.images : [];
+        const images = rawImages.filter((url: unknown) => typeof url === "string" && url.trim().length > 0);
+        if (images.length > REVIEW_IMAGE_MAX_COUNT) {
+          return jsonResponse(400, { message: `Chỉ được đính kèm tối đa ${REVIEW_IMAGE_MAX_COUNT} ảnh` });
+        }
+        const invalidImage = images.find(
+          (url: string) => bucketName && !url.startsWith(`https://${bucketName}.s3.`)
+        );
+        if (invalidImage) {
+          return jsonResponse(400, { message: "Đường dẫn ảnh không hợp lệ" });
+        }
+
         const now = new Date().toISOString();
         await dynamoDb.send(
           new PutCommand({
@@ -201,6 +225,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
               SK: `RATING#${userId}`,
               rating,
               comment,
+              images,
               userId,
               userName,
               createdAt: now,
@@ -249,6 +274,73 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
         return jsonResponse(201, { message: "Đánh giá sản phẩm thành công!" });
       }
+    }
+
+    // -------------------------------------------------------------
+    // Route: /products/{id}/ratings/upload-url (sinh presigned POST để đính kèm ảnh đánh giá)
+    // -------------------------------------------------------------
+    if (resource === "/products/{id}/ratings/upload-url" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Đăng nhập để thực hiện đánh giá" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+
+      const productId = getProductId(event.path, event.pathParameters?.id);
+      if (!productId) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+
+      // Chỉ khách đã mua (đã nhận hàng) mới được upload ảnh đính kèm đánh giá
+      const boughtCheck = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: `BOUGHT#${productId}`,
+          },
+        })
+      );
+      if (!boughtCheck.Item) {
+        return jsonResponse(403, {
+          message: "Bạn chỉ có thể đính kèm ảnh sau khi đã mua hàng thành công.",
+        });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "Định dạng ảnh không hợp lệ. Chỉ chấp nhận JPEG, PNG hoặc WEBP.",
+        });
+      }
+
+      const key = `reviews/${productId}/${userId}/${randomUUID()}.${extension}`;
+
+      const { url, fields } = await createPresignedPost(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType],
+        ],
+        Fields: {
+          "Content-Type": fileType,
+        },
+        Expires: 60,
+      });
+
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES,
+      });
     }
 
     // -------------------------------------------------------------
@@ -550,6 +642,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
 
       // Khi đơn hàng chuyển sang trạng thái "Đánh giá" (đã giao) lần đầu, cộng dồn soldCount cho từng sản phẩm
+      // và cấp quyền đánh giá (BOUGHT#) — đây là mốc duy nhất xác nhận khách đã thực sự nhận hàng.
       if (status === "Đánh giá" && order.status !== "Đánh giá") {
         const items = Array.isArray(order.items) ? order.items : [];
         for (const item of items) {
@@ -571,6 +664,25 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             );
           } catch (err) {
             console.error(`Failed to increment soldCount for product ${item.productId}`, err);
+          }
+
+          if (order.userId) {
+            try {
+              await dynamoDb.send(
+                new PutCommand({
+                  TableName: tableName,
+                  Item: {
+                    PK: `USER#${order.userId}`,
+                    SK: `BOUGHT#${item.productId}`,
+                    productId: item.productId,
+                    orderId: targetOrderId,
+                    purchasedAt: now,
+                  },
+                })
+              );
+            } catch (err) {
+              console.error(`Failed to grant review eligibility for product ${item.productId}`, err);
+            }
           }
         }
       }

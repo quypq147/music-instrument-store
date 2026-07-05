@@ -200,6 +200,19 @@ export class BackendStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
+    // Contact API Lambda (form Liên Hệ công khai, gửi email qua SES)
+    const contactApiLambda = new lambda.Function(this, "ContactApiFunction", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset("../services/contact-api"),
+      environment: {
+        SES_FROM_EMAIL: process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com",
+        CONTACT_INBOX_EMAIL: process.env.CONTACT_INBOX_EMAIL || "support@nhomtttnmusic.vn",
+      },
+      tracing: lambda.Tracing.ACTIVE,
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
     // Stripe Payment Webhook Lambda
     const paymentWebhookLambda = new lambda.Function(this, "PaymentWebhookFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -311,6 +324,13 @@ export class BackendStack extends cdk.Stack {
     props.productsTable.grantReadData(campaignFanOutLambda); // Scan đơn hàng để lấy danh sách khách hàng
     campaignQueue.grantSendMessages(campaignFanOutLambda);
 
+    contactApiLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:SendEmail", "ses:SendRawEmail"],
+        resources: ["*"],
+      })
+    );
+
     // Quyền gọi Lex V2 cho Chatbot Lambda
     chatbotApiLambda.addToRolePolicy(
       new iam.PolicyStatement({
@@ -402,6 +422,17 @@ export class BackendStack extends cdk.Stack {
       productApiIntegration
     );
     ratingsResource.addMethod(
+      "POST",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // Route: /products/{id}/ratings/upload-url (sinh presigned POST để đính kèm ảnh đánh giá)
+    const ratingsUploadUrlResource = ratingsResource.addResource("upload-url");
+    ratingsUploadUrlResource.addMethod(
       "POST",
       productApiIntegration,
       authorizer ? {
@@ -615,6 +646,13 @@ export class BackendStack extends cdk.Stack {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
       } : undefined
+    );
+
+    // Route: /contact (public - form Liên Hệ)
+    const contactResource = api.root.addResource("contact");
+    contactResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(contactApiLambda)
     );
 
     // Route: /webhooks/stripe
