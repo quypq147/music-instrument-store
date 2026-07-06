@@ -160,7 +160,7 @@ export class BackendStack extends cdk.Stack {
     });
 
     // Campaign Sender Lambda (tiêu thụ CampaignQueue, dùng chung code với NotificationApiFunction
-    // nhưng là Lambda riêng + reservedConcurrentExecutions thấp để không tranh compute với luồng giao dịch)
+    // nhưng là Lambda riêng để tách biệt log/scaling với luồng giao dịch)
     const campaignSenderLambda = new lambda.Function(this, "CampaignSenderFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.campaignHandler",
@@ -169,7 +169,6 @@ export class BackendStack extends cdk.Stack {
         TABLE_NAME: props.productsTable.tableName,
         SES_FROM_EMAIL: process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com",
       },
-      reservedConcurrentExecutions: 2,
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
