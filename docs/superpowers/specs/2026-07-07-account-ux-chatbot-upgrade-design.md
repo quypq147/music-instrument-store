@@ -118,7 +118,7 @@ using `@aws-sdk/s3-presigned-post` against the existing `MusicStoreProductsBucke
 - Add `avatarUrl` (optional string) to the shared `UserProfile` type from Section A.
 - New presigned-upload route `POST /users/profile/avatar-upload-url`, mirroring the
   review-image route: allow-list `jpeg/png/webp`, size limit, S3 key
-  `avatars/{userId}/{uuid}.ext`, returns `{ uploadUrl, fields, publicUrl }`.
+  `users/{userId}/profile/{uuid}.ext`, returns `{ uploadUrl, fields, publicUrl }`.
 - New reusable frontend component (e.g. `ImagePicker`): file `<input>` + image preview +
   "upload to S3 via presigned POST" helper (adapting the existing
   `uploadRatingImages` logic in `ProductDetailClient.tsx`).
