@@ -580,6 +580,59 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     // -------------------------------------------------------------
+    // Route: /products/{id}/image-upload-url (sinh presigned POST để admin upload ảnh sản phẩm)
+    // -------------------------------------------------------------
+    if (resource === "/products/{id}/image-upload-url" && method === "POST") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền tải ảnh sản phẩm" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+
+      const productId = getProductId(event.path, event.pathParameters?.id);
+      if (!productId) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "Định dạng ảnh không hợp lệ. Chỉ chấp nhận JPEG, PNG hoặc WEBP.",
+        });
+      }
+
+      const key = `products/${productId}/${randomUUID()}.${extension}`;
+
+      const { url, fields } = await createPresignedPost(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType],
+        ],
+        Fields: {
+          "Content-Type": fileType,
+        },
+        Expires: 60,
+      });
+
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES,
+      });
+    }
+
+    // -------------------------------------------------------------
     // Route: /products/{id}/comments
     // -------------------------------------------------------------
     if (resource === "/products/{id}/comments") {

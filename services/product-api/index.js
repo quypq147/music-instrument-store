@@ -470,6 +470,49 @@ var handler = async (event) => {
         maxSizeBytes: REVIEW_IMAGE_MAX_BYTES
       });
     }
+    if (resource === "/products/{id}/image-upload-url" && method === "POST") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n t\u1EA3i \u1EA3nh s\u1EA3n ph\u1EA9m" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+      const productId2 = getProductId(event.path, event.pathParameters?.id);
+      if (!productId2) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "\u0110\u1ECBnh d\u1EA1ng \u1EA3nh kh\xF4ng h\u1EE3p l\u1EC7. Ch\u1EC9 ch\u1EA5p nh\u1EADn JPEG, PNG ho\u1EB7c WEBP."
+        });
+      }
+      const key = `products/${productId2}/${(0, import_node_crypto.randomUUID)()}.${extension}`;
+      const { url, fields } = await (0, import_s3_presigned_post.createPresignedPost)(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType]
+        ],
+        Fields: {
+          "Content-Type": fileType
+        },
+        Expires: 60
+      });
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES
+      });
+    }
     if (resource === "/products/{id}/comments") {
       const productId2 = getProductId(event.path, event.pathParameters?.id);
       if (!productId2) {
