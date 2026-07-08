@@ -682,6 +682,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
               name: userName !== "User" ? userName : "",
               phone: "",
               address: "",
+              avatarUrl: "",
             },
           });
         }
@@ -697,25 +698,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         const body = JSON.parse(event.body);
         const now = new Date().toISOString();
 
-        const updatedProfile = {
-          PK: `USER#${userId}`,
-          SK: "PROFILE",
+        // Đọc profile hiện có trước khi ghi đè, để một hành động chỉ đổi 1 field (vd. chỉ
+        // upload avatar) không xoá mất các field khác chưa gửi kèm trong body lần này.
+        const getRes = await dynamoDb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+            },
+          })
+        );
+        const existing = getRes.Item || {};
+
+        const updatedProfile: UserProfile = {
           userId,
-          email: email || body.email || "",
-          name: body.name || "",
-          phone: body.phone || "",
-          address: body.address || "",
+          email: email || body.email || existing.email || "",
+          name: body.name ?? existing.name ?? "",
+          phone: body.phone ?? existing.phone ?? "",
+          address: body.address ?? existing.address ?? "",
+          avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
           updatedAt: now,
         };
 
         await dynamoDb.send(
           new PutCommand({
             TableName: tableName,
-            Item: updatedProfile,
+            Item: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+              ...updatedProfile,
+            },
           })
         );
 
-        return jsonResponse(200, { profile: stripTableKeys(updatedProfile) });
+        return jsonResponse(200, { profile: updatedProfile });
       }
     }
 

@@ -553,7 +553,8 @@ var handler = async (event) => {
               email: email || "",
               name: userName !== "User" ? userName : "",
               phone: "",
-              address: ""
+              address: "",
+              avatarUrl: ""
             }
           });
         }
@@ -565,23 +566,36 @@ var handler = async (event) => {
         }
         const body = JSON.parse(event.body);
         const now = (/* @__PURE__ */ new Date()).toISOString();
+        const getRes = await dynamoDb.send(
+          new import_lib_dynamodb.GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE"
+            }
+          })
+        );
+        const existing = getRes.Item || {};
         const updatedProfile = {
-          PK: `USER#${userId}`,
-          SK: "PROFILE",
           userId,
-          email: email || body.email || "",
-          name: body.name || "",
-          phone: body.phone || "",
-          address: body.address || "",
+          email: email || body.email || existing.email || "",
+          name: body.name ?? existing.name ?? "",
+          phone: body.phone ?? existing.phone ?? "",
+          address: body.address ?? existing.address ?? "",
+          avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
           updatedAt: now
         };
         await dynamoDb.send(
           new import_lib_dynamodb.PutCommand({
             TableName: tableName,
-            Item: updatedProfile
+            Item: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+              ...updatedProfile
+            }
           })
         );
-        return jsonResponse(200, { profile: stripTableKeys(updatedProfile) });
+        return jsonResponse(200, { profile: updatedProfile });
       }
     }
     if (resource === "/users/profile/avatar-upload-url" && method === "POST") {
