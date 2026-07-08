@@ -14,6 +14,7 @@ import { OrderCard } from "../components/order/OrderCard";
 import { OrderDetailsModal } from "../components/order/OrderDetailsModal";
 import type { Order } from "../../types/cart";
 import MusicLoading from "../components/common/MusicLoading";
+import { ImagePicker } from "../components/common/ImagePicker";
 
 interface DbOrderItem {
   productId: string;
@@ -46,6 +47,7 @@ type UserProfile = {
   name: string;
   phone: string;
   address: string;
+  avatarUrl?: string;
 };
 
 type WishlistItem = {
@@ -100,6 +102,7 @@ function ProfileContent() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [authToken, setAuthToken] = useState("");
 
   const fetchData = async () => {
     setIsLoadingData(true);
@@ -107,6 +110,7 @@ function ProfileContent() {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
       if (!token) throw new Error("No session token found");
+      setAuthToken(token);
 
       // Fetch Profile
       const profileRes = await fetch("/api/users/profile", {
@@ -237,6 +241,37 @@ function ProfileContent() {
     }
   };
 
+  const handleAvatarUploaded = async (publicUrl: string) => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+      if (!token) throw new Error("No token found");
+
+      const res = await fetch("/api/users/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ avatarUrl: publicUrl }),
+      });
+
+      if (res.ok) {
+        showToast("Cập nhật ảnh đại diện thành công!", "success");
+        fetchData();
+      } else {
+        showToast("Không thể cập nhật ảnh đại diện. Vui lòng thử lại!", "error");
+      }
+    } catch (err) {
+      console.error("Update avatar error:", err);
+      showToast("Đã xảy ra lỗi khi lưu ảnh đại diện.", "error");
+    }
+  };
+
+  const handleAvatarError = (message: string) => {
+    showToast(message, "error");
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
@@ -340,8 +375,15 @@ function ProfileContent() {
           {/* Sidebar */}
           <aside className="w-full md:w-1/4 bg-white dark:bg-[#06261d] rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-primary-container/20 h-fit transition-colors duration-300">
             <div className="text-center mb-6 pb-6 border-b border-slate-100 dark:border-primary-container/20">
-              <div className="w-20 h-20 bg-[#F3EFEA] dark:bg-[#031d16] rounded-full flex items-center justify-center text-3xl font-extrabold text-[#002B1F] dark:text-[#80bea6] mx-auto mb-3 border border-[#DF9E47]/20 dark:border-[#fe932c]/20">
-                {profile?.name ? profile.name.charAt(0).toUpperCase() : "U"}
+              <div className="flex justify-center mb-3">
+                <ImagePicker
+                  currentImageUrl={profile?.avatarUrl || ""}
+                  uploadUrlEndpoint="/api/users/profile/avatar-upload-url"
+                  authToken={authToken}
+                  onUploaded={handleAvatarUploaded}
+                  onError={handleAvatarError}
+                  shape="circle"
+                />
               </div>
               <h2 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6]">{profile?.name || "Thành viên"}</h2>
               <p className="text-xs text-slate-400 dark:text-emerald-100/50 mt-1">{profile?.email}</p>
