@@ -1,5 +1,5 @@
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
-import type { KeyValueStorageInterface } from "@aws-amplify/core";
+import { defaultStorage, type KeyValueStorageInterface } from "@aws-amplify/core";
 
 const STORAGE_MODE_KEY = "music-store-auth-storage-mode";
 
@@ -26,6 +26,10 @@ const sessionStorageAdapter: KeyValueStorageInterface = {
 export function applyRememberMePreference(rememberMe: boolean): void {
   if (rememberMe) {
     window.sessionStorage.removeItem(STORAGE_MODE_KEY);
+    // Luôn đặt lại tường minh về localStorage mặc định — cognitoUserPoolsTokenProvider là
+    // singleton toàn cục, nếu một lần đăng nhập trước đó (trong cùng tab) đã chuyển sang
+    // sessionStorage thì việc chỉ xoá cờ sentinel ở trên không đủ để đổi lại storage đang dùng.
+    cognitoUserPoolsTokenProvider.setKeyValueStorage(defaultStorage);
     return;
   }
 
