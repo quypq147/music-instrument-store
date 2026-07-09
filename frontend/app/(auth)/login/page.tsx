@@ -89,7 +89,7 @@ export default function Login() {
 
       const redirectTarget = isAdminOrStaff ? "/admin" : "/";
 
-      if (token) {
+      if (token && !isAdminOrStaff) {
         try {
           const deviceId = getOrCreateDeviceId();
           const checkRes = await fetch("/api/auth/device/check", {

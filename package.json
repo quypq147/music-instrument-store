@@ -22,5 +22,8 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.1075.0",
     "@aws-sdk/client-dynamodb": "^3.1075.0",
     "@aws-sdk/lib-dynamodb": "^3.1075.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }

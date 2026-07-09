@@ -12,5 +12,9 @@ export interface UserProfile {
   address: string;
   avatarUrl?: string;
   role?: "Admin" | "Staff" | "User";
+  googleLinked?: boolean;
+  facebookLinked?: boolean;
+  googleEmail?: string;
+  facebookEmail?: string;
   updatedAt?: string;
 }

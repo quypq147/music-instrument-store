@@ -83,9 +83,9 @@ const listGroupUserIds = async (groupName: string): Promise<Set<string>> => {
 // dùng để merge vào danh sách admin, tránh trường hợp user bị "biến mất" khỏi trang
 // quản trị chỉ vì chưa từng có bản ghi PROFILE (vd. backfill chưa chạy ở môi trường này).
 const listAllCognitoUsers = async (): Promise<
-  Array<{ userId: string; email: string; name: string }>
+  Array<{ userId: string; email: string; name: string; username: string; identitiesStr: string }>
 > => {
-  const users: Array<{ userId: string; email: string; name: string }> = [];
+  const users: Array<{ userId: string; email: string; name: string; username: string; identitiesStr: string }> = [];
   if (!userPoolId) return users;
 
   let paginationToken: string | undefined;
@@ -101,7 +101,9 @@ const listAllCognitoUsers = async (): Promise<
       if (!sub) continue;
       const email = user.Attributes?.find((attr) => attr.Name === "email")?.Value || "";
       const name = user.Attributes?.find((attr) => attr.Name === "name")?.Value || "";
-      users.push({ userId: sub, email, name });
+      const username = user.Username || "";
+      const identitiesStr = user.Attributes?.find((attr) => attr.Name === "identities")?.Value || "";
+      users.push({ userId: sub, email, name, username, identitiesStr });
     }
     paginationToken = result.PaginationToken;
   } while (paginationToken);
@@ -436,6 +438,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       if (!userId) {
         return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
       }
+
+      // Bỏ qua xác minh thiết bị lạ cho Admin và Staff
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { trusted: true });
+      }
       if (!event.body) {
         return jsonResponse(400, { message: "Missing request body" });
       }
@@ -517,6 +526,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     if (resource === "/auth/device/verify" && method === "POST") {
       if (!userId) {
         return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+      }
+
+      // Bỏ qua xác minh thiết bị lạ cho Admin và Staff
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { message: "Admin/Staff verified automatically" });
       }
       if (!event.body) {
         return jsonResponse(400, { message: "Missing request body" });
@@ -1031,6 +1047,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           phone: body.phone ?? existing.phone ?? "",
           address: body.address ?? existing.address ?? "",
           avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
+          // Bổ sung thông tin liên kết mạng xã hội
+          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
           // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
           // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
           ...(existing.role ? { role: existing.role } : {}),
@@ -1568,10 +1589,21 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           listAllCognitoUsers(),
         ]);
 
+        const cognitoUserMap = new Map<string, typeof cognitoUsers[0]>();
+        for (const u of cognitoUsers) {
+          cognitoUserMap.set(u.userId, u);
+        }
+
         const profilesByUserId = new Map<string, UserProfile>();
         for (const item of items) {
           const profile = stripTableKeys(item) as UserProfile;
-          profilesByUserId.set(profile.userId, profile);
+          // Chỉ thêm vào danh sách hiển thị nếu tài khoản vẫn tồn tại thực tế trên Cognito
+          // (Loại bỏ các profile cũ của các user đã bị xóa trên Cognito)
+          if (cognitoUserMap.has(profile.userId)) {
+            profilesByUserId.set(profile.userId, profile);
+          } else {
+            console.log(`[Admin Users] Lọc bỏ profile mồ côi trong DynamoDB: userId=${profile.userId}, email=${profile.email}`);
+          }
         }
 
         // Bất kỳ user Cognito nào chưa có PROFILE trong DynamoDB (vd. backfill chưa chạy
@@ -1595,6 +1627,37 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             : staffIds.has(profile.userId)
             ? "Staff"
             : "User";
+
+          const cognitoUser = cognitoUserMap.get(profile.userId);
+          const username = cognitoUser?.username || "";
+          const identitiesStr = cognitoUser?.identitiesStr || "";
+
+          let provider = "Email";
+          if (identitiesStr) {
+            try {
+              const identities = JSON.parse(identitiesStr);
+              if (Array.isArray(identities) && identities.length > 0) {
+                const providerName = identities[0].providerName;
+                if (providerName) {
+                  // Chuẩn hóa tên provider (Google, Facebook)
+                  const normalized = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+                  provider = normalized === "Cognito" ? "Email" : normalized;
+                }
+              }
+            } catch (e) {
+              console.error("Failed to parse identities JSON", e);
+            }
+          }
+
+          if (provider === "Email" && username) {
+            if (username.toLowerCase().startsWith("google_") || username.toLowerCase().startsWith("google")) {
+              provider = "Google";
+            } else if (username.toLowerCase().startsWith("facebook_") || username.toLowerCase().startsWith("facebook")) {
+              provider = "Facebook";
+            }
+          }
+
+          (profile as any).provider = provider;
           return profile;
         });
         return jsonResponse(200, profiles);

@@ -117,4 +117,74 @@ describe("POST /auth/device/verify", () => {
     const deleteCall = ddbMock.commandCalls(DeleteCommand)[0];
     expect(deleteCall.args[0].input.Key?.SK).toBe("OTP");
   });
+
+  it("verifies and trusts Admin immediately without checking OTP", async () => {
+    ddbMock.on(GetCommand, {
+      TableName: "test-table",
+      Key: {
+        PK: "USER#admin-1",
+        SK: "PROFILE",
+      },
+    }).resolves({
+      Item: {
+        userId: "admin-1",
+        name: "Test Admin",
+      },
+    });
+
+    const result = await handler(
+      buildEvent({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: "admin-1",
+              email: "admin@example.com",
+              "cognito:groups": "Admin",
+            },
+          },
+        },
+      } as any),
+      {} as Context,
+      () => {}
+    );
+
+    expect(result!.statusCode).toBe(200);
+    expect(JSON.parse(result!.body).message).toContain("verified automatically");
+    expect(ddbMock.commandCalls(GetCommand)).toHaveLength(1);
+  });
+
+  it("verifies and trusts Staff immediately without checking OTP", async () => {
+    ddbMock.on(GetCommand, {
+      TableName: "test-table",
+      Key: {
+        PK: "USER#staff-1",
+        SK: "PROFILE",
+      },
+    }).resolves({
+      Item: {
+        userId: "staff-1",
+        name: "Test Staff",
+      },
+    });
+
+    const result = await handler(
+      buildEvent({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: "staff-1",
+              email: "staff@example.com",
+              "cognito:groups": "Staff",
+            },
+          },
+        },
+      } as any),
+      {} as Context,
+      () => {}
+    );
+
+    expect(result!.statusCode).toBe(200);
+    expect(JSON.parse(result!.body).message).toContain("verified automatically");
+    expect(ddbMock.commandCalls(GetCommand)).toHaveLength(1);
+  });
 });

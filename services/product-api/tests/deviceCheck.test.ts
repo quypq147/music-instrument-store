@@ -139,4 +139,76 @@ describe("POST /auth/device/check", () => {
     const body = JSON.parse(result!.body);
     expect(body.message).not.toMatch(/\d{6}/);
   });
+
+  it("trusts the device immediately for Admin role without OTP", async () => {
+    ddbMock.on(GetCommand, {
+      TableName: "test-table",
+      Key: {
+        PK: "USER#admin-1",
+        SK: "PROFILE",
+      },
+    }).resolves({
+      Item: {
+        userId: "admin-1",
+        name: "Test Admin",
+      },
+    });
+
+    const result = await handler(
+      buildEvent({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: "admin-1",
+              email: "admin@example.com",
+              "cognito:groups": "Admin",
+            },
+          },
+        },
+      } as any),
+      {} as Context,
+      () => {}
+    );
+
+    expect(result!.statusCode).toBe(200);
+    expect(JSON.parse(result!.body)).toEqual({ trusted: true });
+    expect(ddbMock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(lambdaMock.commandCalls(InvokeCommand)).toHaveLength(0);
+  });
+
+  it("trusts the device immediately for Staff role without OTP", async () => {
+    ddbMock.on(GetCommand, {
+      TableName: "test-table",
+      Key: {
+        PK: "USER#staff-1",
+        SK: "PROFILE",
+      },
+    }).resolves({
+      Item: {
+        userId: "staff-1",
+        name: "Test Staff",
+      },
+    });
+
+    const result = await handler(
+      buildEvent({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: "staff-1",
+              email: "staff@example.com",
+              "cognito:groups": "Staff",
+            },
+          },
+        },
+      } as any),
+      {} as Context,
+      () => {}
+    );
+
+    expect(result!.statusCode).toBe(200);
+    expect(JSON.parse(result!.body)).toEqual({ trusted: true });
+    expect(ddbMock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(lambdaMock.commandCalls(InvokeCommand)).toHaveLength(0);
+  });
 });

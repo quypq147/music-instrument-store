@@ -51,6 +51,10 @@ type UserProfile = {
   phone: string;
   address: string;
   avatarUrl?: string;
+  googleLinked?: boolean;
+  facebookLinked?: boolean;
+  googleEmail?: string;
+  facebookEmail?: string;
 };
 
 type WishlistItem = {
@@ -80,7 +84,7 @@ function ProfileContent() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [activeTab, setActiveTab] = useState<"profile" | "wishlist" | "orders" | "settings">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "wishlist" | "orders" | "settings" | "connections">("profile");
   const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -103,6 +107,62 @@ function ProfileContent() {
   });
 
   const { theme, setThemeExplicitly } = useTheme();
+
+  // Connections states
+  const [googleEmailInput, setGoogleEmailInput] = useState("");
+  const [facebookEmailInput, setFacebookEmailInput] = useState("");
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [showFacebookModal, setShowFacebookModal] = useState(false);
+
+  const handleToggleConnection = async (
+    provider: "google" | "facebook",
+    action: "link" | "unlink",
+    emailVal?: string
+  ) => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+      if (!token) throw new Error("No token found");
+
+      const isLink = action === "link";
+      const payload: Record<string, boolean | string> = {};
+      if (provider === "google") {
+        payload.googleLinked = isLink;
+        payload.googleEmail = isLink ? emailVal : "";
+      } else {
+        payload.facebookLinked = isLink;
+        payload.facebookEmail = isLink ? emailVal : "";
+      }
+
+      const res = await fetch("/api/users/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        showToast(
+          `${isLink ? "Liên kết" : "Hủy liên kết"} tài khoản ${
+            provider === "google" ? "Google" : "Facebook"
+          } thành công!`,
+          "success"
+        );
+        setShowGoogleModal(false);
+        setShowFacebookModal(false);
+        setGoogleEmailInput("");
+        setFacebookEmailInput("");
+        fetchData();
+      } else {
+        showToast("Thao tác thất bại. Vui lòng thử lại!", "error");
+      }
+    } catch (err) {
+      console.error(`Error toggling connection for ${provider}:`, err);
+      showToast("Đã xảy ra lỗi khi cập nhật liên kết.", "error");
+    }
+  };
 
   // Form State
   const [formData, setFormData] = useState({
@@ -205,7 +265,7 @@ function ProfileContent() {
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam === "profile" || tabParam === "wishlist" || tabParam === "orders" || tabParam === "settings") {
+    if (tabParam === "profile" || tabParam === "wishlist" || tabParam === "orders" || tabParam === "settings" || tabParam === "connections") {
       (() => setActiveTab(tabParam))();
     }
   }, [searchParams]);
@@ -375,6 +435,7 @@ function ProfileContent() {
     { id: "wishlist", label: "❤️ Sản phẩm yêu thích" },
     { id: "orders", label: "📦 Đơn hàng đã mua" },
     { id: "settings", label: "⚙️ Cài đặt tài khoản" },
+    { id: "connections", label: "🔗 Liên kết tài khoản" },
   ];
 
   return (
@@ -605,7 +666,7 @@ function ProfileContent() {
                       </>
                     )}
                   </div>
-                ) : (
+                ) : activeTab === "settings" ? (
                   <div>
                     <h2 className="font-serif text-xl text-[#002B1F] dark:text-[#80bea6] mb-6 pb-2 border-b border-slate-100 dark:border-primary-container/20">
                       Cài Đặt Tài Khoản
@@ -733,6 +794,118 @@ function ProfileContent() {
                       </div>
                     </div>
                   </div>
+                ) : (
+                  <div>
+                    <h2 className="font-serif text-xl text-[#002B1F] dark:text-[#80bea6] mb-6 pb-2 border-b border-slate-100 dark:border-primary-container/20">
+                      Tài Khoản Liên Kết
+                    </h2>
+                    <p className="text-slate-600 dark:text-emerald-100/70 text-sm leading-relaxed mb-6">
+                      Liên kết tài khoản mạng xã hội của bạn để đăng nhập nhanh chóng bằng Google hoặc Facebook.
+                    </p>
+
+                    <div className="space-y-6 max-w-xl">
+                      {/* Email connection */}
+                      <div className="flex items-center justify-between p-5 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-all duration-300">
+                        <div className="flex items-center gap-4">
+                          <span className="text-3xl">✉️</span>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Email (Tài khoản gốc)</h4>
+                            <p className="text-xs text-slate-400 dark:text-emerald-100/40 mt-1">{profile?.email}</p>
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Đã kết nối
+                        </span>
+                      </div>
+
+                      {/* Google Connection */}
+                      <div className="flex items-center justify-between p-5 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-all duration-300">
+                        <div className="flex items-center gap-4">
+                          <span className="text-3xl">🌐</span>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Google</h4>
+                            {profile?.googleLinked ? (
+                              <p className="text-xs text-slate-400 dark:text-emerald-100/40 mt-1">{profile.googleEmail}</p>
+                            ) : (
+                              <p className="text-xs text-slate-400 dark:text-emerald-100/40 mt-1">Chưa liên kết tài khoản Google</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {profile?.googleLinked ? (
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                              Đã liên kết
+                            </span>
+                            <button
+                              onClick={async () => {
+                                const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Google?" });
+                                if (ok) handleToggleConnection("google", "unlink");
+                              }}
+                              className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                            >
+                              Hủy liên kết
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setGoogleEmailInput(profile?.email || "");
+                              setShowGoogleModal(true);
+                            }}
+                            className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
+                          >
+                            Liên kết Google
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Facebook Connection */}
+                      <div className="flex items-center justify-between p-5 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-all duration-300">
+                        <div className="flex items-center gap-4">
+                          <span className="text-3xl">👥</span>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Facebook</h4>
+                            {profile?.facebookLinked ? (
+                              <p className="text-xs text-slate-400 dark:text-emerald-100/40 mt-1">{profile.facebookEmail}</p>
+                            ) : (
+                              <p className="text-xs text-slate-400 dark:text-emerald-100/40 mt-1">Chưa liên kết tài khoản Facebook</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {profile?.facebookLinked ? (
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                              Đã liên kết
+                            </span>
+                            <button
+                              onClick={async () => {
+                                const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Facebook?" });
+                                if (ok) handleToggleConnection("facebook", "unlink");
+                              }}
+                              className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                            >
+                              Hủy liên kết
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setFacebookEmailInput(profile?.email || "");
+                              setShowFacebookModal(true);
+                            }}
+                            className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
+                          >
+                            Liên kết Facebook
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -746,6 +919,86 @@ function ProfileContent() {
         order={selectedDetailOrder}
         onClose={() => setSelectedDetailOrder(null)}
       />
+
+      {/* Google Linking Modal */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#06261d] w-full max-w-sm rounded-2xl p-6 border border-slate-100 dark:border-primary-container/20">
+            <h3 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6] mb-4 text-center">Liên kết tài khoản Google</h3>
+            <p className="text-xs text-slate-500 dark:text-emerald-100/50 mb-4 text-center leading-relaxed">
+              Vui lòng nhập địa chỉ email Google/Gmail bạn muốn liên kết với tài khoản này.
+            </p>
+            <input
+              type="email"
+              required
+              value={googleEmailInput}
+              onChange={(e) => setGoogleEmailInput(e.target.value)}
+              placeholder="example@gmail.com"
+              className={inputClasses + " mb-4 text-center"}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (!googleEmailInput.includes("@")) {
+                    showToast("Email không hợp lệ", "warning");
+                    return;
+                  }
+                  handleToggleConnection("google", "link", googleEmailInput);
+                }}
+                className="flex-1 bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
+              >
+                Xác nhận
+              </button>
+              <button
+                onClick={() => setShowGoogleModal(false)}
+                className="px-4 border border-gray-200 dark:border-primary-container/20 text-slate-600 dark:text-emerald-100/70 font-bold text-xs py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#031d16] transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Facebook Linking Modal */}
+      {showFacebookModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#06261d] w-full max-w-sm rounded-2xl p-6 border border-slate-100 dark:border-primary-container/20">
+            <h3 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6] mb-4 text-center">Liên kết tài khoản Facebook</h3>
+            <p className="text-xs text-slate-500 dark:text-emerald-100/50 mb-4 text-center leading-relaxed">
+              Vui lòng nhập địa chỉ email hoặc tên người dùng Facebook của bạn để liên kết.
+            </p>
+            <input
+              type="text"
+              required
+              value={facebookEmailInput}
+              onChange={(e) => setFacebookEmailInput(e.target.value)}
+              placeholder="Tên tài khoản hoặc email..."
+              className={inputClasses + " mb-4 text-center"}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (!facebookEmailInput.trim()) {
+                    showToast("Vui lòng nhập thông tin liên kết", "warning");
+                    return;
+                  }
+                  handleToggleConnection("facebook", "link", facebookEmailInput);
+                }}
+                className="flex-1 bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
+              >
+                Xác nhận
+              </button>
+              <button
+                onClick={() => setShowFacebookModal(false)}
+                className="px-4 border border-gray-200 dark:border-primary-container/20 text-slate-600 dark:text-emerald-100/70 font-bold text-xs py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#031d16] transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes profileTabFade {

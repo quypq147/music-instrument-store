@@ -3,7 +3,8 @@
 import "../../components/common/AmplifyConfig";
 import { useEffect, useState, useCallback } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
-import { UserTable, type AdminUser } from "../../components/admin/UserTable";
+import { type AdminUser } from "../../components/admin/UserTable";
+import { StaffTable } from "../../components/admin/StaffTable";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
 import MusicLoading from "../../components/common/MusicLoading";
@@ -176,7 +177,7 @@ export default function AdminStaffPage() {
         <h2 className="font-serif text-2xl text-[#002B1F]">Quản Lý Nhân Sự</h2>
       </div>
 
-      <UserTable
+      <StaffTable
         users={usersList}
         search={userSearch}
         onSearchChange={setUserSearch}

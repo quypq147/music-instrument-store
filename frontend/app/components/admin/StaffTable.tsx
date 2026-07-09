@@ -3,18 +3,9 @@
 
 import { useEffect, useState } from "react";
 import { Pagination } from "../common/Pagination";
+import { type AdminUser } from "./UserTable";
 
-export interface AdminUser {
-  userId: string;
-  email?: string;
-  name?: string;
-  phone?: string;
-  address?: string;
-  role?: string;
-  provider?: string;
-}
-
-interface UserTableProps {
+interface StaffTableProps {
   users: AdminUser[];
   search: string;
   onSearchChange: (value: string) => void;
@@ -24,7 +15,7 @@ interface UserTableProps {
 
 const ITEMS_PER_PAGE = 10;
 
-export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteUser }: UserTableProps) {
+export function StaffTable({ users, search, onSearchChange, onEditUser, onDeleteUser }: StaffTableProps) {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -60,7 +51,7 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
       <div className="mb-6">
         <input
           type="text"
-          placeholder="Tìm kiếm người dùng..."
+          placeholder="Tìm kiếm nhân sự..."
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           className="w-full max-w-xs py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all"
@@ -84,7 +75,7 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
             {paginatedUsers.length === 0 ? (
               <tr>
                 <td colSpan={7} className="text-center py-16 text-slate-500">
-                  Không tìm thấy người dùng nào.
+                  Không tìm thấy nhân sự nào.
                 </td>
               </tr>
             ) : (
@@ -145,7 +136,7 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
                           disabled={isDeleting}
                           className="text-xs font-bold text-[#002B1F] hover:underline px-3 py-1.5 hover:bg-[#F3EFEA] rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Sửa thông tin
+                          Sửa vai trò
                         </button>
                         <button
                           type="button"

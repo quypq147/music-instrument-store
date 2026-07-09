@@ -75,7 +75,9 @@ var listAllCognitoUsers = async () => {
       if (!sub) continue;
       const email = user.Attributes?.find((attr) => attr.Name === "email")?.Value || "";
       const name = user.Attributes?.find((attr) => attr.Name === "name")?.Value || "";
-      users.push({ userId: sub, email, name });
+      const username = user.Username || "";
+      const identitiesStr = user.Attributes?.find((attr) => attr.Name === "identities")?.Value || "";
+      users.push({ userId: sub, email, name, username, identitiesStr });
     }
     paginationToken = result.PaginationToken;
   } while (paginationToken);
@@ -342,6 +344,11 @@ var handler = async (event) => {
       if (!userId) {
         return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
       }
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { trusted: true });
+      }
       if (!event.body) {
         return jsonResponse(400, { message: "Missing request body" });
       }
@@ -405,6 +412,11 @@ var handler = async (event) => {
     if (resource === "/auth/device/verify" && method === "POST") {
       if (!userId) {
         return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+      }
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { message: "Admin/Staff verified automatically" });
       }
       if (!event.body) {
         return jsonResponse(400, { message: "Missing request body" });
@@ -834,6 +846,11 @@ var handler = async (event) => {
           phone: body.phone ?? existing.phone ?? "",
           address: body.address ?? existing.address ?? "",
           avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
+          // Bổ sung thông tin liên kết mạng xã hội
+          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
           // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
           // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
           ...existing.role ? { role: existing.role } : {},
@@ -1246,10 +1263,18 @@ var handler = async (event) => {
           listGroupUserIds("Staff"),
           listAllCognitoUsers()
         ]);
+        const cognitoUserMap = /* @__PURE__ */ new Map();
+        for (const u of cognitoUsers) {
+          cognitoUserMap.set(u.userId, u);
+        }
         const profilesByUserId = /* @__PURE__ */ new Map();
         for (const item of items) {
           const profile = stripTableKeys(item);
-          profilesByUserId.set(profile.userId, profile);
+          if (cognitoUserMap.has(profile.userId)) {
+            profilesByUserId.set(profile.userId, profile);
+          } else {
+            console.log(`[Admin Users] L\u1ECDc b\u1ECF profile m\u1ED3 c\xF4i trong DynamoDB: userId=${profile.userId}, email=${profile.email}`);
+          }
         }
         for (const cognitoUser of cognitoUsers) {
           if (!profilesByUserId.has(cognitoUser.userId)) {
@@ -1265,6 +1290,32 @@ var handler = async (event) => {
         }
         const profiles = Array.from(profilesByUserId.values()).map((profile) => {
           profile.role = adminIds.has(profile.userId) ? "Admin" : staffIds.has(profile.userId) ? "Staff" : "User";
+          const cognitoUser = cognitoUserMap.get(profile.userId);
+          const username = cognitoUser?.username || "";
+          const identitiesStr = cognitoUser?.identitiesStr || "";
+          let provider = "Email";
+          if (identitiesStr) {
+            try {
+              const identities = JSON.parse(identitiesStr);
+              if (Array.isArray(identities) && identities.length > 0) {
+                const providerName = identities[0].providerName;
+                if (providerName) {
+                  const normalized = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+                  provider = normalized === "Cognito" ? "Email" : normalized;
+                }
+              }
+            } catch (e) {
+              console.error("Failed to parse identities JSON", e);
+            }
+          }
+          if (provider === "Email" && username) {
+            if (username.toLowerCase().startsWith("google_") || username.toLowerCase().startsWith("google")) {
+              provider = "Google";
+            } else if (username.toLowerCase().startsWith("facebook_") || username.toLowerCase().startsWith("facebook")) {
+              provider = "Facebook";
+            }
+          }
+          profile.provider = provider;
           return profile;
         });
         return jsonResponse(200, profiles);
