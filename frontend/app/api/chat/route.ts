@@ -190,10 +190,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Nếu ở chế độ BOT, gọi Amazon Lex V2
+    // Bot chỉ build locale "en_US" (dù toàn bộ utterance/response đều là tiếng Việt —
+    // "locale" ở đây chỉ là tên bucket cấu hình trên Lex, không phải ngôn ngữ thật sự
+    // của nội dung). Gọi thẳng "vi_VN" từng khiến MỌI tin nhắn tốn 1 lần gọi lỗi
+    // (ResourceNotFoundException) trước khi rơi về "en_US" — đã xác nhận qua AWS CLI.
     const params = {
       botId: process.env.LEX_BOT_ID || "EDGDWWRZNM",
       botAliasId: process.env.LEX_BOT_ALIAS_ID || "TSTALIASID",
-      localeId: "vi_VN", // Dùng tiếng Việt
+      localeId: "en_US",
       sessionId: sessionId,
       text: text,
       sessionState: {
@@ -204,24 +208,15 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    let lexResponse;
-    try {
-      const command = new RecognizeTextCommand(params);
-      lexResponse = await lexClient.send(command);
-    } catch (lexErr) {
-      console.warn("Lex Send Error (trying en_US fallback):", lexErr);
-      // Fallback sang en_US đề phòng Bot chỉ config tiếng Anh
-      const fallbackParams = { ...params, localeId: "en_US" };
-      const command = new RecognizeTextCommand(fallbackParams);
-      lexResponse = await lexClient.send(command);
-    }
+    const command = new RecognizeTextCommand(params);
+    const lexResponse = await lexClient.send(command);
 
     let messages = lexResponse.messages?.map((msg) => msg.content).filter(Boolean) as string[] || [];
 
     // 5. Fulfillment Hook tại Next.js API (Nâng cấp hệ thống AI)
     const matchedIntent = lexResponse.sessionState?.intent?.name;
-    
-    if (matchedIntent === "TrackOrder" && clientEmail !== "guest") {
+
+    if (matchedIntent === "CheckOrderIntent" && clientEmail !== "guest") {
       // Tự động kiểm tra đơn hàng gần nhất của User trong DynamoDB
       try {
         const orderQuery = await ddbDocClient.send(
@@ -251,7 +246,7 @@ export async function POST(req: NextRequest) {
       } catch (dbErr) {
         console.error("Fulfillment TrackOrder DB Error:", dbErr);
       }
-    } else if (matchedIntent === "SearchProduct") {
+    } else if (matchedIntent === "CheckProductsIntent") {
       // Hỗ trợ tìm kiếm sản phẩm cơ bản (nếu người dùng hỏi về sản phẩm)
       const productSlot = lexResponse.sessionState?.intent?.slots?.productName?.value?.interpretedValue || "";
       if (productSlot) {
@@ -260,7 +255,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (messages.length === 0) {
-      messages = ["Xin lỗi, tôi chưa hiểu rõ ý bạn. Bạn có muốn gặp nhân viên hỗ trợ trực tiếp không? (Gõ 'nhân viên' để kết nối)"];
+      const fallbackReplies = [
+        "Xin lỗi, tôi chưa hiểu rõ ý bạn. Bạn có muốn gặp nhân viên hỗ trợ trực tiếp không? (Gõ 'nhân viên' để kết nối)",
+        "Tôi chưa nắm được câu hỏi này. Bạn có thể hỏi về sản phẩm, đơn hàng, đổi trả, bảo hành, vận chuyển hoặc thanh toán — hoặc gõ 'nhân viên' để được hỗ trợ trực tiếp.",
+        "Câu này hơi khó với tôi. Bạn thử diễn đạt lại, hoặc gõ 'nhân viên' để kết nối với người hỗ trợ nhé!",
+      ];
+      messages = [fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)]];
     }
 
     // 6. Lưu phản hồi của Bot vào DynamoDB

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { Order } from "../../../types/cart";
 import { Pagination } from "../common/Pagination";
+import { formatOrderCode } from "../../lib/order";
 
 interface OrderTableProps {
   orders: Order[];
@@ -18,7 +19,15 @@ interface OrderTableProps {
 
 const ITEMS_PER_PAGE = 10;
 
-export const ORDER_STATUSES = ["Chờ xác nhận", "Chờ lấy đơn", "Chờ giao hàng", "Đánh giá", "Tạm dừng", "Đã hủy"];
+export const ORDER_STATUSES = [
+  "Chờ xác nhận",
+  "Chờ lấy đơn",
+  "Đang giao hàng",
+  "Đã giao hàng",
+  "Đánh giá",
+  "Tạm dừng",
+  "Đã hủy",
+];
 
 export const getStatusClasses = (status: string) => {
   switch (status) {
@@ -26,8 +35,11 @@ export const getStatusClasses = (status: string) => {
       return "bg-amber-50 text-amber-700";
     case "Chờ lấy đơn":
       return "bg-blue-50 text-blue-700";
-    case "Chờ giao hàng":
+    case "Chờ giao hàng": // trạng thái cũ, giữ lại style cho đơn hàng lịch sử
+    case "Đang giao hàng":
       return "bg-sky-50 text-sky-700";
+    case "Đã giao hàng":
+      return "bg-teal-50 text-teal-700";
     case "Đánh giá":
       return "bg-emerald-50 text-emerald-700";
     case "Tạm dừng":
@@ -53,11 +65,12 @@ export function OrderTable({
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
-  const statuses = ["Tất cả", "Chờ xác nhận", "Chờ lấy đơn", "Chờ giao hàng", "Đánh giá", "Tạm dừng", "Đã hủy"];
+  const statuses = ["Tất cả", ...ORDER_STATUSES];
 
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
       order.id.toLowerCase().includes(search.toLowerCase()) ||
+      formatOrderCode(order).toLowerCase().includes(search.toLowerCase()) ||
       (order.customer?.name || "").toLowerCase().includes(search.toLowerCase()) ||
       (order.customer?.phone || "").includes(search);
 
@@ -167,7 +180,7 @@ export function OrderTable({
                 return (
                   <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="p-4 font-mono text-xs font-semibold text-slate-600">
-                      {order.id.slice(0, 16)}...
+                      {formatOrderCode(order)}
                     </td>
                     <td className="p-4 text-slate-600">{formatDate(order.createdAt)}</td>
                     <td className="p-4">
@@ -205,8 +218,9 @@ export function OrderTable({
                         >
                           <option value="Chờ xác nhận">Chờ xác nhận</option>
                           <option value="Chờ lấy đơn">Chờ lấy đơn</option>
-                          <option value="Chờ giao hàng">Chờ giao hàng</option>
-                          <option value="Đánh giá">Đánh giá (Đã giao)</option>
+                          <option value="Đang giao hàng">Đang giao hàng</option>
+                          <option value="Đã giao hàng">Đã giao hàng (chờ khách xác nhận)</option>
+                          <option value="Đánh giá">Đánh giá (Hoàn tất)</option>
                           <option value="Tạm dừng">Tạm dừng</option>
                           <option value="Đã hủy">Đã hủy</option>
                         </select>
@@ -245,7 +259,7 @@ export function OrderTable({
               <AlertTriangle width="26" height="26" />
             </div>
 
-            <h3 className="font-serif text-lg text-[#002B1F] mb-2">Hủy đơn hàng {cancelTarget.id.slice(0, 12)}...</h3>
+            <h3 className="font-serif text-lg text-[#002B1F] mb-2">Hủy đơn hàng {formatOrderCode(cancelTarget)}</h3>
             <p className="text-sm text-slate-600 leading-relaxed mb-4">
               Vui lòng nhập lý do hủy đơn — nội dung này sẽ được gửi kèm trong email/SMS thông báo cho khách hàng.
             </p>

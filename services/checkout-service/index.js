@@ -7137,8 +7137,15 @@ var stripe_esm_node_default = Stripe;
 // services/checkout-service/index.ts
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
+var import_crypto = require("crypto");
 var stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
 var tableName = process.env.TABLE_NAME || "";
+var momoPartnerCode = process.env.MOMO_PARTNER_CODE || "";
+var momoAccessKey = process.env.MOMO_ACCESS_KEY || "";
+var momoSecretKey = process.env.MOMO_SECRET_KEY || "";
+var momoApiUrl = process.env.MOMO_API_URL || "https://test-payment.momo.vn/v2/gateway/api/create";
+var momoRedirectUrl = process.env.MOMO_REDIRECT_URL || "";
+var momoIpnUrl = process.env.MOMO_IPN_URL || "";
 var ddbClient = new import_client_dynamodb.DynamoDBClient({});
 var ddbDocClient = import_lib_dynamodb.DynamoDBDocumentClient.from(ddbClient);
 var corsHeaders = {
@@ -7213,6 +7220,63 @@ var handler = async (event) => {
         });
       }
     }
+    const mockOrderId = resolvedIdempotencyKey.replace("idemp_", "");
+    if (paymentMethod === "Momo") {
+      const isMockMomo = !momoPartnerCode || momoPartnerCode === "TO_BE_REPLACED_IN_CONSOLE" || momoPartnerCode.startsWith("dummy") || !momoSecretKey;
+      if (isMockMomo) {
+        console.log(`Momo keys not configured. Returning mock pay URL. Idempotency Key: ${resolvedIdempotencyKey}`);
+        return jsonResponse(200, {
+          payUrl: `/checkout?orderId=${mockOrderId}&method=Momo&amount=${totalPrice}&isMock=true`,
+          isMock: true,
+          amount: totalPrice,
+          idempotencyKey: resolvedIdempotencyKey
+        });
+      }
+      const extraData = "";
+      const requestType = "captureWallet";
+      const orderInfo = `Thanh toan don hang ${mockOrderId}`;
+      const requestId = `req_${mockOrderId}_${Date.now()}`;
+      const redirectUrl = momoRedirectUrl || `https://${event.headers?.Host || event.headers?.host || "localhost:3000"}/orders`;
+      const ipnUrl = momoIpnUrl || `https://${event.headers?.Host || event.headers?.host || "localhost:3000"}/webhooks/momo`;
+      const rawSignature = `accessKey=${momoAccessKey}&amount=${totalPrice}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${mockOrderId}&orderInfo=${orderInfo}&partnerCode=${momoPartnerCode}&redirectUrl=${redirectUrl}&requestId=${requestId}&requestType=${requestType}`;
+      const signature = (0, import_crypto.createHmac)("sha256", momoSecretKey).update(rawSignature).digest("hex");
+      const momoPayload = {
+        partnerCode: momoPartnerCode,
+        partnerName: "Music Store",
+        storeId: "MusicStore",
+        requestId,
+        amount: totalPrice,
+        orderId: mockOrderId,
+        orderInfo,
+        redirectUrl,
+        ipnUrl,
+        lang: "vi",
+        extraData,
+        requestType,
+        signature
+      };
+      console.log("Calling Momo API with payload:", JSON.stringify(momoPayload));
+      const response = await fetch(momoApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(momoPayload)
+      });
+      const momoResult = await response.json();
+      console.log("Momo API response:", JSON.stringify(momoResult));
+      if (momoResult.resultCode === 0) {
+        return jsonResponse(200, {
+          payUrl: momoResult.payUrl,
+          isMock: false,
+          amount: totalPrice,
+          idempotencyKey: resolvedIdempotencyKey
+        });
+      } else {
+        return jsonResponse(400, {
+          message: `Momo API error: ${momoResult.message}`,
+          error: momoResult
+        });
+      }
+    }
     const isMockStripe = !stripeSecretKey || stripeSecretKey === "TO_BE_REPLACED_IN_CONSOLE" || stripeSecretKey.startsWith("dummy");
     if (isMockStripe) {
       console.log(`Stripe key is not configured or mock. Returning mock client secret. Idempotency Key: ${resolvedIdempotencyKey}`);
@@ -7220,7 +7284,7 @@ var handler = async (event) => {
         clientSecret: `pi_mock_${resolvedIdempotencyKey}_secret_${Math.random().toString(36).substring(2, 6)}`,
         amount: totalPrice,
         currency: "vnd",
-        paymentMethod: paymentMethod || "Stripe",
+        paymentMethod: "Stripe",
         customer,
         idempotencyKey: resolvedIdempotencyKey,
         isMock: true
@@ -7238,7 +7302,8 @@ var handler = async (event) => {
         customerName: customer?.name || "Unknown",
         customerPhone: customer?.phone || "Unknown",
         customerAddress: customer?.address || "Unknown",
-        itemsCount: items.length.toString()
+        itemsCount: items.length.toString(),
+        orderId: mockOrderId
       }
     }, {
       idempotencyKey: resolvedIdempotencyKey
@@ -7249,7 +7314,7 @@ var handler = async (event) => {
       id: paymentIntent.id,
       amount: paymentIntent.amount,
       currency: paymentIntent.currency,
-      paymentMethod: paymentMethod || "Stripe",
+      paymentMethod: "Stripe",
       idempotencyKey: resolvedIdempotencyKey
     });
   } catch (error) {

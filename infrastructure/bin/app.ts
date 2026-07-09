@@ -33,7 +33,16 @@ const securityStack = new SecurityStack(app, `MusicStoreSecurityStack-${envName}
 
 const databaseStack = new DatabaseStack(app, `MusicStoreDatabaseStack-${envName}`);
 
-const authStack = new AuthStack(app, `MusicStoreAuthStack-${envName}`);
+const authStack = new AuthStack(app, `MusicStoreAuthStack-${envName}`, {
+  productsTable: databaseStack.mainTable,
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  facebookClientId: process.env.FACEBOOK_CLIENT_ID,
+  facebookClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+  cognitoDomainPrefix: process.env.COGNITO_DOMAIN_PREFIX,
+  callbackUrls: process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN ? [process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN] : undefined,
+  logoutUrls: process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT ? [process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT] : undefined,
+});
 
 new BackendStack(app, `MusicStoreBackendStack-${envName}`, {
   productsTable: databaseStack.mainTable,

@@ -71,7 +71,6 @@ music-instrument-store/
 |   |-- db-models/                   # Shared DynamoDB record models
 |   `-- shared-types/                # Shared TypeScript interfaces
 |-- services/
-|   |-- chatbot-backend/             # Chatbot Lambda package
 |   |-- notification/                # Notification Lambda package
 |   |-- order-processing/            # SQS order processing Lambda
 |   |-- payment-webhook/             # Stripe webhook Lambda

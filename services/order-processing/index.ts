@@ -1,6 +1,6 @@
 import type { SQSHandler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -30,6 +30,41 @@ export const handler: SQSHandler = async (event) => {
       }
 
       const now = new Date().toISOString();
+
+      // DEDUCT STOCK DIRECTLY FOR COD ORDERS
+      if (order.paymentMethod === "COD" && Array.isArray(order.items)) {
+        const transactItems = order.items.map((item: any) => {
+          const qty = Number(item.quantity || 1);
+          const productId = String(item.productId);
+          return {
+            Update: {
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+              },
+              UpdateExpression: "SET stock = stock - :qty, updatedAt = :now",
+              ConditionExpression: "stock >= :qty",
+              ExpressionAttributeValues: {
+                ":qty": qty,
+                ":now": now,
+              },
+            },
+          };
+        });
+
+        try {
+          await dynamoDb.send(
+            new TransactWriteCommand({
+              TransactItems: transactItems,
+            })
+          );
+          console.log(`[Order Processing] Successfully deducted stock for COD order ${orderId}`);
+        } catch (stockErr: any) {
+          console.error(`[Order Processing] Failed to deduct stock for COD order ${orderId} (likely out of stock)`, stockErr);
+          throw stockErr; // Throw to trigger SQS retry / DLQ
+        }
+      }
 
       // Lưu đơn hàng vào DynamoDB với GSI1 để hỗ trợ truy vấn đa chiều (ví dụ: xem đơn hàng theo User)
       const gsi1pk = order.userId ? `USER#${order.userId}` : undefined;

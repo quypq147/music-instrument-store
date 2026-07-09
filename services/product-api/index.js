@@ -1,3 +1,4 @@
+"use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -25,8 +26,10 @@ module.exports = __toCommonJS(index_exports);
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_client_eventbridge = require("@aws-sdk/client-eventbridge");
+var import_client_lambda = require("@aws-sdk/client-lambda");
 var import_client_s3 = require("@aws-sdk/client-s3");
 var import_s3_presigned_post = require("@aws-sdk/s3-presigned-post");
+var import_client_cognito_identity_provider = require("@aws-sdk/client-cognito-identity-provider");
 var import_node_crypto = require("node:crypto");
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(new import_client_dynamodb.DynamoDBClient({}));
 var tableName = process.env.TABLE_NAME;
@@ -34,6 +37,84 @@ var eventBridge = new import_client_eventbridge.EventBridgeClient({});
 var eventBusName = process.env.EVENT_BUS_NAME;
 var s3Client = new import_client_s3.S3Client({});
 var bucketName = process.env.BUCKET_NAME;
+var cognitoClient = new import_client_cognito_identity_provider.CognitoIdentityProviderClient({});
+var userPoolId = process.env.USER_POOL_ID;
+var listGroupUserIds = async (groupName) => {
+  const ids = /* @__PURE__ */ new Set();
+  if (!userPoolId) return ids;
+  let nextToken;
+  do {
+    const result = await cognitoClient.send(
+      new import_client_cognito_identity_provider.ListUsersInGroupCommand({
+        UserPoolId: userPoolId,
+        GroupName: groupName,
+        NextToken: nextToken
+      })
+    );
+    for (const user of result.Users ?? []) {
+      const sub = user.Attributes?.find((attr) => attr.Name === "sub")?.Value;
+      if (sub) ids.add(sub);
+    }
+    nextToken = result.NextToken;
+  } while (nextToken);
+  return ids;
+};
+var listAllCognitoUsers = async () => {
+  const users = [];
+  if (!userPoolId) return users;
+  let paginationToken;
+  do {
+    const result = await cognitoClient.send(
+      new import_client_cognito_identity_provider.ListUsersCommand({
+        UserPoolId: userPoolId,
+        PaginationToken: paginationToken
+      })
+    );
+    for (const user of result.Users ?? []) {
+      const sub = user.Attributes?.find((attr) => attr.Name === "sub")?.Value;
+      if (!sub) continue;
+      const email = user.Attributes?.find((attr) => attr.Name === "email")?.Value || "";
+      const name = user.Attributes?.find((attr) => attr.Name === "name")?.Value || "";
+      const username = user.Username || "";
+      const identitiesStr = user.Attributes?.find((attr) => attr.Name === "identities")?.Value || "";
+      users.push({ userId: sub, email, name, username, identitiesStr });
+    }
+    paginationToken = result.PaginationToken;
+  } while (paginationToken);
+  return users;
+};
+var syncCognitoGroup = async (targetUserId, role) => {
+  if (!userPoolId) return;
+  const lookup = await cognitoClient.send(
+    new import_client_cognito_identity_provider.ListUsersCommand({
+      UserPoolId: userPoolId,
+      Filter: `sub = "${targetUserId}"`,
+      Limit: 1
+    })
+  );
+  const cognitoUsername = lookup.Users?.[0]?.Username;
+  if (!cognitoUsername) return;
+  const wantsAdmin = role === "Admin";
+  const wantsStaff = role === "Staff";
+  if (wantsAdmin) {
+    await cognitoClient.send(
+      new import_client_cognito_identity_provider.AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Admin" })
+    );
+  } else {
+    await cognitoClient.send(
+      new import_client_cognito_identity_provider.AdminRemoveUserFromGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Admin" })
+    );
+  }
+  if (wantsStaff) {
+    await cognitoClient.send(
+      new import_client_cognito_identity_provider.AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Staff" })
+    );
+  } else {
+    await cognitoClient.send(
+      new import_client_cognito_identity_provider.AdminRemoveUserFromGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Staff" })
+    );
+  }
+};
 var REVIEW_IMAGE_ALLOWED_TYPES = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -41,6 +122,36 @@ var REVIEW_IMAGE_ALLOWED_TYPES = {
 };
 var REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 var REVIEW_IMAGE_MAX_COUNT = 3;
+var lambdaClient = new import_client_lambda.LambdaClient({});
+var notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
+var DEVICE_TRUST_WINDOW_MS = 30 * 24 * 60 * 60 * 1e3;
+var OTP_TTL_MS = 10 * 60 * 1e3;
+var MAX_OTP_ATTEMPTS = 5;
+var generateOtpCode = () => String(Math.floor(1e5 + Math.random() * 9e5));
+var sendOtpEmail = async (email, code) => {
+  if (!notificationFunctionName) {
+    throw new Error("NOTIFICATION_FUNCTION_NAME environment variable is not set");
+  }
+  const payload = {
+    httpMethod: "POST",
+    body: JSON.stringify({
+      type: "EMAIL",
+      recipient: email,
+      title: "M\xE3 x\xE1c minh \u0111\u0103ng nh\u1EADp - Music Instrument Store",
+      message: `M\xE3 x\xE1c minh thi\u1EBFt b\u1ECB m\u1EDBi c\u1EE7a b\u1EA1n l\xE0: ${code}. M\xE3 c\xF3 hi\u1EC7u l\u1EF1c trong 10 ph\xFAt. N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u m\xE3 n\xE0y, vui l\xF2ng b\u1ECF qua email n\xE0y.`
+    })
+  };
+  const result = await lambdaClient.send(
+    new import_client_lambda.InvokeCommand({
+      FunctionName: notificationFunctionName,
+      InvocationType: "RequestResponse",
+      Payload: Buffer.from(JSON.stringify(payload))
+    })
+  );
+  if (result.FunctionError) {
+    throw new Error(`Notification Lambda returned an error: ${result.FunctionError}`);
+  }
+};
 var jsonResponse = (statusCode, body) => ({
   statusCode,
   headers: {
@@ -53,7 +164,7 @@ var jsonResponse = (statusCode, body) => ({
 });
 var stripTableKeys = (item) => {
   if (!item) return item;
-  const { PK, SK, pk, sk, createdAt, updatedAt, GSI2PK, GSI2SK, ...rest } = item;
+  const { PK, SK, pk, sk, GSI2PK, GSI2SK, ...rest } = item;
   return rest;
 };
 var getProductId = (path, pathId) => {
@@ -62,6 +173,140 @@ var getProductId = (path, pathId) => {
   }
   const match = path?.match(/^\/products\/([^/]+)$/);
   return match?.[1] ? decodeURIComponent(match[1]) : void 0;
+};
+var DELIVERED_STATUS = "\u0110\xE3 giao h\xE0ng";
+var COMPLETED_STATUS = "\u0110\xE1nh gi\xE1";
+var applyOrderStatusUpdate = async (targetOrderId, order, status, reason, changedBy) => {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const updatedOrder = {
+    ...order,
+    status,
+    updatedAt: now
+  };
+  const isActivating = (order.status === "PENDING" || order.status === "Ch\u1EDD x\xE1c nh\u1EADn") && (status === "Ch\u1EDD l\u1EA5y \u0111\u01A1n" || status === "\u0110ang giao h\xE0ng");
+  const isOnlinePayment = order.paymentMethod === "VNPay" || order.paymentMethod === "Momo" || order.paymentMethod === "Stripe";
+  if (isActivating && isOnlinePayment && Array.isArray(order.items)) {
+    for (const item of order.items) {
+      const productId = String(item.productId);
+      const qty = Number(item.quantity || 1);
+      try {
+        await dynamoDb.send(
+          new import_lib_dynamodb.UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY"
+            },
+            UpdateExpression: "SET reserved = reserved - :qty",
+            ExpressionAttributeValues: { ":qty": qty }
+          })
+        );
+        console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
+      } catch (reserveErr) {
+        console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+      }
+    }
+  }
+  await dynamoDb.send(
+    new import_lib_dynamodb.PutCommand({
+      TableName: tableName,
+      Item: updatedOrder
+    })
+  );
+  try {
+    await dynamoDb.send(
+      new import_lib_dynamodb.PutCommand({
+        TableName: tableName,
+        Item: {
+          PK: `ORDER#${targetOrderId}`,
+          SK: `STATUS_HISTORY#${now}`,
+          status,
+          changedBy,
+          reason: reason || "",
+          createdAt: now
+        }
+      })
+    );
+  } catch (err) {
+    console.error(`Failed to write status history for order ${targetOrderId}`, err);
+  }
+  if (status === COMPLETED_STATUS && order.status !== COMPLETED_STATUS) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    for (const item of items) {
+      if (!item?.productId || typeof item?.quantity !== "number") continue;
+      try {
+        await dynamoDb.send(
+          new import_lib_dynamodb.UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${item.productId}`,
+              SK: "METADATA"
+            },
+            UpdateExpression: "ADD soldCount :qty",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: {
+              ":qty": item.quantity
+            }
+          })
+        );
+      } catch (err) {
+        console.error(`Failed to increment soldCount for product ${item.productId}`, err);
+      }
+      if (order.userId) {
+        try {
+          await dynamoDb.send(
+            new import_lib_dynamodb.PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: `USER#${order.userId}`,
+                SK: `BOUGHT#${item.productId}`,
+                productId: item.productId,
+                orderId: targetOrderId,
+                purchasedAt: now
+              }
+            })
+          );
+        } catch (err) {
+          console.error(`Failed to grant review eligibility for product ${item.productId}`, err);
+        }
+      }
+    }
+  }
+  if (eventBusName) {
+    const isCancellation = status === "\u0110\xE3 h\u1EE7y";
+    const detailType = isCancellation ? "OrderCancelled" : "OrderUpdated";
+    try {
+      console.log(`Publishing ${detailType} event for order ${targetOrderId} to ${eventBusName}...`);
+      await eventBridge.send(
+        new import_client_eventbridge.PutEventsCommand({
+          Entries: [
+            {
+              EventBusName: eventBusName,
+              Source: "com.musicstore.order",
+              DetailType: detailType,
+              Detail: JSON.stringify({
+                eventId: (0, import_node_crypto.randomUUID)(),
+                version: "1.0",
+                orderId: targetOrderId,
+                email: order.email,
+                customer: order.customer,
+                status,
+                totalPrice: order.totalPrice,
+                ...isCancellation && {
+                  reason: reason || "",
+                  cancelledBy: changedBy,
+                  items: order.items
+                }
+              })
+            }
+          ]
+        })
+      );
+    } catch (err) {
+      console.error(`Failed to publish ${detailType} event to EventBridge`, err);
+    }
+  }
+  return updatedOrder;
 };
 var handler = async (event) => {
   try {
@@ -76,7 +321,170 @@ var handler = async (event) => {
     const authorizer = event.requestContext.authorizer;
     const userId = authorizer?.claims?.sub;
     const email = authorizer?.claims?.email;
-    const userName = authorizer?.claims?.name || email || authorizer?.claims?.["cognito:username"] || "User";
+    let userName = authorizer?.claims?.name || email || authorizer?.claims?.["cognito:username"] || "User";
+    if (userId) {
+      try {
+        const userProfile = await dynamoDb.send(
+          new import_lib_dynamodb.GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE"
+            }
+          })
+        );
+        if (userProfile.Item?.name) {
+          userName = userProfile.Item.name;
+        }
+      } catch (err) {
+        console.warn("Could not fetch user profile name:", err);
+      }
+    }
+    if (resource === "/auth/device/check" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+      }
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { trusted: true });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { deviceId } = JSON.parse(event.body);
+      if (!deviceId) {
+        return jsonResponse(400, { message: "Missing deviceId" });
+      }
+      const deviceRes = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: `DEVICE#${deviceId}`
+          }
+        })
+      );
+      const now = Date.now();
+      const device = deviceRes.Item;
+      const isTrusted = !!device && typeof device.lastSeenAt === "string" && now - new Date(device.lastSeenAt).getTime() < DEVICE_TRUST_WINDOW_MS;
+      if (isTrusted) {
+        await dynamoDb.send(
+          new import_lib_dynamodb.PutCommand({
+            TableName: tableName,
+            Item: {
+              PK: `USER#${userId}`,
+              SK: `DEVICE#${deviceId}`,
+              deviceId,
+              createdAt: device.createdAt || new Date(now).toISOString(),
+              lastSeenAt: new Date(now).toISOString()
+            }
+          })
+        );
+        return jsonResponse(200, { trusted: true });
+      }
+      if (!email) {
+        return jsonResponse(400, { message: "Kh\xF4ng x\xE1c \u0111\u1ECBnh \u0111\u01B0\u1EE3c email \u0111\u1EC3 g\u1EEDi m\xE3 x\xE1c minh" });
+      }
+      const code = generateOtpCode();
+      const expiresAt = new Date(now + OTP_TTL_MS).toISOString();
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `USER#${userId}`,
+            SK: "OTP",
+            code,
+            expiresAt,
+            attempts: 0,
+            ttl: Math.floor((now + OTP_TTL_MS) / 1e3)
+          }
+        })
+      );
+      try {
+        await sendOtpEmail(email, code);
+      } catch (err) {
+        console.error("Failed to send device verification OTP email", err);
+        return jsonResponse(500, { message: "Kh\xF4ng th\u1EC3 g\u1EEDi m\xE3 x\xE1c minh, vui l\xF2ng th\u1EED l\u1EA1i." });
+      }
+      return jsonResponse(200, { trusted: false });
+    }
+    if (resource === "/auth/device/verify" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+      }
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { message: "Admin/Staff verified automatically" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { deviceId, code } = JSON.parse(event.body);
+      if (!deviceId || !code) {
+        return jsonResponse(400, { message: "Missing deviceId or code" });
+      }
+      const otpRes = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: "OTP"
+          }
+        })
+      );
+      const otp = otpRes.Item;
+      if (!otp || new Date(otp.expiresAt).getTime() < Date.now()) {
+        return jsonResponse(400, {
+          message: "M\xE3 x\xE1c minh \u0111\xE3 h\u1EBFt h\u1EA1n ho\u1EB7c kh\xF4ng t\u1ED3n t\u1EA1i. Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 nh\u1EADn m\xE3 m\u1EDBi."
+        });
+      }
+      const attempts = typeof otp.attempts === "number" ? otp.attempts : 0;
+      if (attempts >= MAX_OTP_ATTEMPTS) {
+        await dynamoDb.send(
+          new import_lib_dynamodb.DeleteCommand({
+            TableName: tableName,
+            Key: { PK: `USER#${userId}`, SK: "OTP" }
+          })
+        );
+        return jsonResponse(400, {
+          message: "B\u1EA1n \u0111\xE3 nh\u1EADp sai qu\xE1 s\u1ED1 l\u1EA7n cho ph\xE9p. Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 nh\u1EADn m\xE3 m\u1EDBi."
+        });
+      }
+      if (otp.code !== code) {
+        await dynamoDb.send(
+          new import_lib_dynamodb.PutCommand({
+            TableName: tableName,
+            Item: { ...otp, attempts: attempts + 1 }
+          })
+        );
+        return jsonResponse(400, { message: "M\xE3 x\xE1c minh kh\xF4ng \u0111\xFAng." });
+      }
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `USER#${userId}`,
+            SK: `DEVICE#${deviceId}`,
+            deviceId,
+            createdAt: nowIso,
+            lastSeenAt: nowIso
+          }
+        })
+      );
+      await dynamoDb.send(
+        new import_lib_dynamodb.DeleteCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: "OTP"
+          }
+        })
+      );
+      return jsonResponse(200, { trusted: true });
+    }
     if (resource === "/products/{id}/view" && method === "POST") {
       const productId2 = getProductId(event.path, event.pathParameters?.id);
       if (!productId2) {
@@ -282,6 +690,49 @@ var handler = async (event) => {
         maxSizeBytes: REVIEW_IMAGE_MAX_BYTES
       });
     }
+    if (resource === "/products/{id}/image-upload-url" && method === "POST") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n t\u1EA3i \u1EA3nh s\u1EA3n ph\u1EA9m" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+      const productId2 = getProductId(event.path, event.pathParameters?.id);
+      if (!productId2) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "\u0110\u1ECBnh d\u1EA1ng \u1EA3nh kh\xF4ng h\u1EE3p l\u1EC7. Ch\u1EC9 ch\u1EA5p nh\u1EADn JPEG, PNG ho\u1EB7c WEBP."
+        });
+      }
+      const key = `products/${productId2}/${(0, import_node_crypto.randomUUID)()}.${extension}`;
+      const { url, fields } = await (0, import_s3_presigned_post.createPresignedPost)(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType]
+        ],
+        Fields: {
+          "Content-Type": fileType
+        },
+        Expires: 60
+      });
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES
+      });
+    }
     if (resource === "/products/{id}/comments") {
       const productId2 = getProductId(event.path, event.pathParameters?.id);
       if (!productId2) {
@@ -365,7 +816,8 @@ var handler = async (event) => {
               email: email || "",
               name: userName !== "User" ? userName : "",
               phone: "",
-              address: ""
+              address: "",
+              avatarUrl: ""
             }
           });
         }
@@ -377,24 +829,82 @@ var handler = async (event) => {
         }
         const body = JSON.parse(event.body);
         const now = (/* @__PURE__ */ new Date()).toISOString();
+        const getRes = await dynamoDb.send(
+          new import_lib_dynamodb.GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE"
+            }
+          })
+        );
+        const existing = getRes.Item || {};
         const updatedProfile = {
-          PK: `USER#${userId}`,
-          SK: "PROFILE",
           userId,
-          email: email || body.email || "",
-          name: body.name || "",
-          phone: body.phone || "",
-          address: body.address || "",
+          email: email || body.email || existing.email || "",
+          name: body.name ?? existing.name ?? "",
+          phone: body.phone ?? existing.phone ?? "",
+          address: body.address ?? existing.address ?? "",
+          avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
+          // Bổ sung thông tin liên kết mạng xã hội
+          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
+          // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
+          // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
+          ...existing.role ? { role: existing.role } : {},
           updatedAt: now
         };
         await dynamoDb.send(
           new import_lib_dynamodb.PutCommand({
             TableName: tableName,
-            Item: updatedProfile
+            Item: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+              ...updatedProfile
+            }
           })
         );
-        return jsonResponse(200, { profile: stripTableKeys(updatedProfile) });
+        return jsonResponse(200, { profile: updatedProfile });
       }
+    }
+    if (resource === "/users/profile/avatar-upload-url" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "\u0110\u1ECBnh d\u1EA1ng \u1EA3nh kh\xF4ng h\u1EE3p l\u1EC7. Ch\u1EC9 ch\u1EA5p nh\u1EADn JPEG, PNG ho\u1EB7c WEBP."
+        });
+      }
+      const key = `users/${userId}/profile/${(0, import_node_crypto.randomUUID)()}.${extension}`;
+      const { url, fields } = await (0, import_s3_presigned_post.createPresignedPost)(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType]
+        ],
+        Fields: {
+          "Content-Type": fileType
+        },
+        Expires: 60
+      });
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES
+      });
     }
     if (resource === "/users/orders") {
       if (!userId) {
@@ -485,113 +995,53 @@ var handler = async (event) => {
       if (!getResult.Item) {
         return jsonResponse(404, { message: "Order not found" });
       }
-      const order = getResult.Item;
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      const updatedOrder = {
-        ...order,
+      const changedBy = authorizer?.claims?.email || authorizer?.claims?.name || authorizer?.claims?.["cognito:username"] || "SYSTEM";
+      const updatedOrder = await applyOrderStatusUpdate(
+        targetOrderId,
+        getResult.Item,
         status,
-        updatedAt: now
-      };
-      await dynamoDb.send(
-        new import_lib_dynamodb.PutCommand({
+        reason,
+        changedBy
+      );
+      return jsonResponse(200, stripTableKeys(updatedOrder));
+    }
+    if (resource === "/orders/{id}/confirm-receipt" && method === "PUT") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+      }
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+      const getResult = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
           TableName: tableName,
-          Item: updatedOrder
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA"
+          }
         })
       );
-      const changedBy = authorizer?.claims?.email || authorizer?.claims?.name || authorizer?.claims?.["cognito:username"] || "SYSTEM";
-      try {
-        await dynamoDb.send(
-          new import_lib_dynamodb.PutCommand({
-            TableName: tableName,
-            Item: {
-              PK: `ORDER#${targetOrderId}`,
-              SK: `STATUS_HISTORY#${now}`,
-              status,
-              changedBy,
-              reason: reason || "",
-              createdAt: now
-            }
-          })
-        );
-      } catch (err) {
-        console.error(`Failed to write status history for order ${targetOrderId}`, err);
+      if (!getResult.Item) {
+        return jsonResponse(404, { message: "Order not found" });
       }
-      if (status === "\u0110\xE1nh gi\xE1" && order.status !== "\u0110\xE1nh gi\xE1") {
-        const items = Array.isArray(order.items) ? order.items : [];
-        for (const item of items) {
-          if (!item?.productId || typeof item?.quantity !== "number") continue;
-          try {
-            await dynamoDb.send(
-              new import_lib_dynamodb.UpdateCommand({
-                TableName: tableName,
-                Key: {
-                  PK: `PRODUCT#${item.productId}`,
-                  SK: "METADATA"
-                },
-                UpdateExpression: "ADD soldCount :qty",
-                ConditionExpression: "attribute_exists(PK)",
-                ExpressionAttributeValues: {
-                  ":qty": item.quantity
-                }
-              })
-            );
-          } catch (err) {
-            console.error(`Failed to increment soldCount for product ${item.productId}`, err);
-          }
-          if (order.userId) {
-            try {
-              await dynamoDb.send(
-                new import_lib_dynamodb.PutCommand({
-                  TableName: tableName,
-                  Item: {
-                    PK: `USER#${order.userId}`,
-                    SK: `BOUGHT#${item.productId}`,
-                    productId: item.productId,
-                    orderId: targetOrderId,
-                    purchasedAt: now
-                  }
-                })
-              );
-            } catch (err) {
-              console.error(`Failed to grant review eligibility for product ${item.productId}`, err);
-            }
-          }
-        }
+      const order = getResult.Item;
+      if (order.userId !== userId) {
+        return jsonResponse(403, { message: "Forbidden: \u0110\xE2y kh\xF4ng ph\u1EA3i \u0111\u01A1n h\xE0ng c\u1EE7a b\u1EA1n" });
       }
-      if (eventBusName) {
-        const isCancellation = status === "\u0110\xE3 h\u1EE7y";
-        const detailType = isCancellation ? "OrderCancelled" : "OrderUpdated";
-        try {
-          console.log(`Publishing ${detailType} event for order ${targetOrderId} to ${eventBusName}...`);
-          await eventBridge.send(
-            new import_client_eventbridge.PutEventsCommand({
-              Entries: [
-                {
-                  EventBusName: eventBusName,
-                  Source: "com.musicstore.order",
-                  DetailType: detailType,
-                  Detail: JSON.stringify({
-                    eventId: (0, import_node_crypto.randomUUID)(),
-                    version: "1.0",
-                    orderId: targetOrderId,
-                    email: order.email,
-                    customer: order.customer,
-                    status,
-                    totalPrice: order.totalPrice,
-                    ...isCancellation && {
-                      reason: reason || "",
-                      cancelledBy: changedBy,
-                      items: order.items
-                    }
-                  })
-                }
-              ]
-            })
-          );
-        } catch (err) {
-          console.error(`Failed to publish ${detailType} event to EventBridge`, err);
-        }
+      if (order.status !== DELIVERED_STATUS) {
+        return jsonResponse(400, {
+          message: "\u0110\u01A1n h\xE0ng ch\u01B0a \u1EDF tr\u1EA1ng th\xE1i \u0111\xE3 giao, kh\xF4ng th\u1EC3 x\xE1c nh\u1EADn nh\u1EADn h\xE0ng"
+        });
       }
+      const changedBy = authorizer?.claims?.email || authorizer?.claims?.name || userId;
+      const updatedOrder = await applyOrderStatusUpdate(
+        targetOrderId,
+        order,
+        COMPLETED_STATUS,
+        "Kh\xE1ch h\xE0ng x\xE1c nh\u1EADn \u0111\xE3 nh\u1EADn h\xE0ng",
+        changedBy
+      );
       return jsonResponse(200, stripTableKeys(updatedOrder));
     }
     if (resource === "/orders/{id}/history" && method === "GET") {
@@ -696,6 +1146,95 @@ var handler = async (event) => {
       }
       return jsonResponse(200, { valid: true, coupon: stripTableKeys(coupon) });
     }
+    if (resource === "/coupons" && method === "GET") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      const items = [];
+      let ExclusiveStartKey;
+      do {
+        const result = await dynamoDb.send(
+          new import_lib_dynamodb.ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(PK, :couponPrefix) AND SK = :metadataSk",
+            ExpressionAttributeValues: {
+              ":couponPrefix": "COUPON#",
+              ":metadataSk": "METADATA"
+            },
+            ExclusiveStartKey
+          })
+        );
+        items.push(...result.Items ?? []);
+        ExclusiveStartKey = result.LastEvaluatedKey;
+      } while (ExclusiveStartKey);
+      const coupons = items.map((item) => stripTableKeys(item)).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      return jsonResponse(200, coupons);
+    }
+    if (resource === "/coupons/{code}" && (method === "PUT" || method === "DELETE")) {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      const code = event.pathParameters?.code;
+      if (!code) {
+        return jsonResponse(400, { message: "Missing coupon code" });
+      }
+      if (method === "DELETE") {
+        await dynamoDb.send(
+          new import_lib_dynamodb.DeleteCommand({
+            TableName: tableName,
+            Key: { PK: `COUPON#${code}`, SK: "METADATA" }
+          })
+        );
+        return jsonResponse(200, { message: "\u0110\xE3 x\xF3a m\xE3 gi\u1EA3m gi\xE1" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+      const getResult = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: { PK: `COUPON#${code}`, SK: "METADATA" }
+        })
+      );
+      if (!getResult.Item) {
+        return jsonResponse(404, { message: "M\xE3 gi\u1EA3m gi\xE1 kh\xF4ng t\u1ED3n t\u1EA1i" });
+      }
+      const existing = getResult.Item;
+      const body = JSON.parse(event.body);
+      const {
+        discountType,
+        discountValue,
+        minOrderValue,
+        usageLimit,
+        validFrom,
+        validUntil,
+        isActive
+      } = body;
+      if (discountType && discountType !== "percentage" && discountType !== "fixed") {
+        return jsonResponse(400, { message: "discountType ph\u1EA3i l\xE0 'percentage' ho\u1EB7c 'fixed'" });
+      }
+      const updatedCoupon = {
+        ...existing,
+        discountType: discountType ?? existing.discountType,
+        discountValue: typeof discountValue === "number" ? discountValue : existing.discountValue,
+        minOrderValue: typeof minOrderValue === "number" ? minOrderValue : existing.minOrderValue,
+        usageLimit: usageLimit === null || typeof usageLimit === "number" ? usageLimit : existing.usageLimit,
+        validFrom: validFrom ?? existing.validFrom,
+        validUntil: validUntil === null || validUntil ? validUntil : existing.validUntil,
+        isActive: typeof isActive === "boolean" ? isActive : existing.isActive
+      };
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: updatedCoupon
+        })
+      );
+      return jsonResponse(200, stripTableKeys(updatedCoupon));
+    }
     if (resource === "/users" || resource === "/users/{userId}") {
       const groups = authorizer?.claims?.["cognito:groups"] || "";
       const isStaff = groups.includes("Admin") || groups.includes("Staff");
@@ -719,7 +1258,66 @@ var handler = async (event) => {
           items.push(...result.Items ?? []);
           ExclusiveStartKey = result.LastEvaluatedKey;
         } while (ExclusiveStartKey);
-        const profiles = items.map((item) => stripTableKeys(item));
+        const [adminIds, staffIds, cognitoUsers] = await Promise.all([
+          listGroupUserIds("Admin"),
+          listGroupUserIds("Staff"),
+          listAllCognitoUsers()
+        ]);
+        const cognitoUserMap = /* @__PURE__ */ new Map();
+        for (const u of cognitoUsers) {
+          cognitoUserMap.set(u.userId, u);
+        }
+        const profilesByUserId = /* @__PURE__ */ new Map();
+        for (const item of items) {
+          const profile = stripTableKeys(item);
+          if (cognitoUserMap.has(profile.userId)) {
+            profilesByUserId.set(profile.userId, profile);
+          } else {
+            console.log(`[Admin Users] L\u1ECDc b\u1ECF profile m\u1ED3 c\xF4i trong DynamoDB: userId=${profile.userId}, email=${profile.email}`);
+          }
+        }
+        for (const cognitoUser of cognitoUsers) {
+          if (!profilesByUserId.has(cognitoUser.userId)) {
+            const fallbackProfile = {
+              userId: cognitoUser.userId,
+              email: cognitoUser.email,
+              name: cognitoUser.name || cognitoUser.email.split("@")[0] || "User",
+              phone: "",
+              address: ""
+            };
+            profilesByUserId.set(cognitoUser.userId, fallbackProfile);
+          }
+        }
+        const profiles = Array.from(profilesByUserId.values()).map((profile) => {
+          profile.role = adminIds.has(profile.userId) ? "Admin" : staffIds.has(profile.userId) ? "Staff" : "User";
+          const cognitoUser = cognitoUserMap.get(profile.userId);
+          const username = cognitoUser?.username || "";
+          const identitiesStr = cognitoUser?.identitiesStr || "";
+          let provider = "Email";
+          if (identitiesStr) {
+            try {
+              const identities = JSON.parse(identitiesStr);
+              if (Array.isArray(identities) && identities.length > 0) {
+                const providerName = identities[0].providerName;
+                if (providerName) {
+                  const normalized = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+                  provider = normalized === "Cognito" ? "Email" : normalized;
+                }
+              }
+            } catch (e) {
+              console.error("Failed to parse identities JSON", e);
+            }
+          }
+          if (provider === "Email" && username) {
+            if (username.toLowerCase().startsWith("google_") || username.toLowerCase().startsWith("google")) {
+              provider = "Google";
+            } else if (username.toLowerCase().startsWith("facebook_") || username.toLowerCase().startsWith("facebook")) {
+              provider = "Facebook";
+            }
+          }
+          profile.provider = provider;
+          return profile;
+        });
         return jsonResponse(200, profiles);
       }
       if (resource === "/users/{userId}") {
@@ -761,6 +1359,13 @@ var handler = async (event) => {
               Item: updatedProfile
             })
           );
+          if (body.role) {
+            try {
+              await syncCognitoGroup(targetUserId, body.role);
+            } catch (error) {
+              console.error("Failed to sync Cognito group for role change:", error);
+            }
+          }
           return jsonResponse(200, stripTableKeys(updatedProfile));
         }
         if (method === "DELETE") {
@@ -1024,7 +1629,7 @@ var handler = async (event) => {
         return jsonResponse(400, { message: "Invalid request: Missing body" });
       }
       const body = JSON.parse(event.body);
-      const { id, name, brand, type, price, imageUrl, description } = body;
+      const { id, name, brand, type, price, imageUrl, description, stock } = body;
       if (!id || !name || !brand || typeof price !== "number" || !imageUrl || !description) {
         return jsonResponse(400, { message: "Missing required fields" });
       }
@@ -1049,7 +1654,23 @@ var handler = async (event) => {
           Item: newItem
         })
       );
-      return jsonResponse(201, stripTableKeys(newItem));
+      const initialStock = typeof stock === "number" ? stock : 0;
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `PRODUCT#${id}`,
+            SK: "INVENTORY",
+            stock: initialStock,
+            reserved: 0,
+            updatedAt: now
+          }
+        })
+      );
+      return jsonResponse(201, {
+        ...stripTableKeys(newItem),
+        stock: initialStock
+      });
     }
     if (method === "PUT") {
       if (!productId) {
@@ -1103,7 +1724,39 @@ var handler = async (event) => {
           Item: updatedItem
         })
       );
-      return jsonResponse(200, stripTableKeys(updatedItem));
+      let finalStock = null;
+      if (body.stock !== void 0) {
+        const newStock = typeof body.stock === "number" ? body.stock : Number(body.stock);
+        if (Number.isInteger(newStock)) {
+          const currentInv = await dynamoDb.send(
+            new import_lib_dynamodb.GetCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY"
+              }
+            })
+          );
+          const currentReserved = currentInv.Item?.reserved || 0;
+          await dynamoDb.send(
+            new import_lib_dynamodb.PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+                stock: newStock,
+                reserved: currentReserved,
+                updatedAt: now
+              }
+            })
+          );
+          finalStock = newStock;
+        }
+      }
+      return jsonResponse(200, {
+        ...stripTableKeys(updatedItem),
+        ...finalStock !== null ? { stock: finalStock } : {}
+      });
     }
     if (method === "DELETE") {
       if (!productId) {

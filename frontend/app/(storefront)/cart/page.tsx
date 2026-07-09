@@ -1,39 +1,36 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import "../../components/common/AmplifyConfig";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
+import { useCart } from "../../context/CartContext";
 
-import type { CartItem, Customer, Order } from "../../../types/cart";
+import type { Customer, Order } from "../../../types/cart";
 import { CartItemCard } from "../../components/cart/CartItemCard";
 import { CartSummary } from "../../components/cart/CartSummary";
-import { CheckoutModal } from "../../components/cart/CheckoutModal";
+import dynamic from "next/dynamic";
 
-interface CartState {
-  cart: CartItem[];
-  selectedItems: number[];
-}
-
-const getStoredCart = (): CartItem[] => {
-  if (typeof window === "undefined") {
-    return [];
+const CheckoutModal = dynamic(
+  () => import("../../components/cart/CheckoutModal").then((mod) => mod.CheckoutModal),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-[#06261d] w-full max-w-2xl h-80 rounded-2xl flex items-center justify-center text-primary font-bold">
+          Đang tải...
+        </div>
+      </div>
+    ),
   }
+);
 
-  return JSON.parse(localStorage.getItem("cart") || "[]") as CartItem[];
-};
 
-const getInitialCartState = (): CartState => {
-  const cart = getStoredCart();
-
-  return {
-    cart,
-    selectedItems: cart.map((_, index: number) => index),
-  };
-};
 
 const createOrderTimestamp = () => ({
   id: "DH" + Date.now(),
@@ -44,18 +41,23 @@ export default function Cart() {
   const router = useRouter();
   const { showToast } = useToast();
   const confirmAction = useConfirm();
-  // Start empty on both server and client so the first client render matches
-  // the server-rendered HTML; the real cart loads after mount to avoid a
-  // hydration mismatch when localStorage already has items.
-  const [{ cart, selectedItems }, setCartState] =
-    useState<CartState>({ cart: [], selectedItems: [] });
+  const {
+    cart,
+    setCart,
+    increaseQuantity,
+    decreaseQuantity,
+    removeItem,
+  } = useCart();
+
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setCartState(getInitialCartState());
-    }, 0);
-    return () => clearTimeout(timer);
-  }, []);
+    if (cart.length > 0 && !hasInitializedSelection) {
+      setSelectedItems(cart.map((_, index) => index));
+      setHasInitializedSelection(true);
+    }
+  }, [cart, hasInitializedSelection]);
 
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("COD");
@@ -73,23 +75,6 @@ export default function Cart() {
     address: "",
     note: "",
   });
-
-  const saveCart = (newCart: CartItem[]) => {
-    localStorage.setItem("cart", JSON.stringify(newCart));
-
-    setCartState((prev) => ({
-      cart: newCart,
-      selectedItems: prev.selectedItems.filter((index) => index < newCart.length),
-    }));
-  };
-
-  const setSelectedItems = (updater: number[] | ((prev: number[]) => number[])) => {
-    setCartState((prev) => ({
-      cart: prev.cart,
-      selectedItems:
-        typeof updater === "function" ? updater(prev.selectedItems) : updater,
-    }));
-  };
 
   const getPriceNumber = (price: string) =>
     Number(String(price).replace(/[^\d]/g, ""));
@@ -110,75 +95,75 @@ export default function Cart() {
     }
   };
 
-  const selectedCart = cart.filter((_, index) =>
-    selectedItems.includes(index)
-  );
+  const selectedCart = useMemo(() => {
+    return cart.filter((_, index) => selectedItems.includes(index));
+  }, [cart, selectedItems]);
 
-  const increaseQuantity = (index: number) => {
-    const newCart = [...cart];
-    const item = newCart[index];
-
-    if (!item) return;
-
-    item.quantity = (item.quantity ?? 1) + 1;
-    saveCart(newCart);
+  const handleIncrease = (index: number) => {
+    const item = cart[index];
+    if (item) {
+      increaseQuantity(item.id);
+    }
   };
 
-  const decreaseQuantity = async (index: number) => {
-    const newCart = [...cart];
-    const item = newCart[index];
-
+  const handleDecrease = async (index: number) => {
+    const item = cart[index];
     if (!item) return;
 
     if ((item.quantity ?? 1) > 1) {
-      item.quantity = (item.quantity ?? 1) - 1;
+      decreaseQuantity(item.id);
     } else {
       const ok = await confirmAction({
         message: "Bạn có muốn xóa sản phẩm này khỏi giỏ hàng không?",
         danger: true,
       });
       if (!ok) return;
-      newCart.splice(index, 1);
+      removeItem(item.id);
+      setSelectedItems((prev) => prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)));
     }
-
-    saveCart(newCart);
   };
 
-  const removeItem = async (index: number) => {
+  const handleRemove = async (index: number) => {
+    const item = cart[index];
+    if (!item) return;
+
     const ok = await confirmAction({
       message: "Bạn chắc chắn muốn xóa sản phẩm này?",
       danger: true,
     });
     if (!ok) return;
 
-    const newCart = [...cart];
-    newCart.splice(index, 1);
-    saveCart(newCart);
+    removeItem(item.id);
+    setSelectedItems((prev) => prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)));
   };
 
-  const clearCart = async () => {
+  const handleClearCart = async () => {
     const ok = await confirmAction({
       message: "Bạn chắc chắn muốn xóa toàn bộ giỏ hàng?",
       danger: true,
     });
     if (!ok) return;
 
-    saveCart([]);
+    setCart([]);
     setSelectedItems([]);
   };
 
-  const totalItems = selectedCart.reduce(
-    (sum, item) => sum + (item.quantity || 1),
-    0
-  );
+  const { totalItems, totalPrice } = useMemo(() => {
+    const itemsCount = selectedCart.reduce(
+      (sum, item) => sum + (item.quantity || 1),
+      0
+    );
+    const priceSum = selectedCart.reduce(
+      (sum, item) =>
+        sum + getPriceNumber(item.price) * (item.quantity || 1),
+      0
+    );
+    return { totalItems: itemsCount, totalPrice: priceSum };
+  }, [selectedCart]);
 
-  const totalPrice = selectedCart.reduce(
-    (sum, item) =>
-      sum + getPriceNumber(item.price) * (item.quantity || 1),
-    0
-  );
-
-  const finalPrice = Math.max(totalPrice - discountAmount, 0);
+  const finalPrice = useMemo(() => {
+    return Math.max(totalPrice - discountAmount, 0);
+  }, [totalPrice, discountAmount]);
 
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
@@ -310,7 +295,7 @@ export default function Cart() {
       );
 
       setShowCheckout(false);
-      saveCart(remainingCart);
+      setCart(remainingCart);
       setSelectedItems([]);
 
       setCustomer({
@@ -376,14 +361,14 @@ export default function Cart() {
 
             {cart.map((item, index) => (
               <CartItemCard
-                key={index}
+                key={item.id}
                 item={item}
                 index={index}
                 isSelected={selectedItems.includes(index)}
                 onToggleSelect={toggleSelectItem}
-                onIncrease={increaseQuantity}
-                onDecrease={decreaseQuantity}
-                onRemove={removeItem}
+                onIncrease={handleIncrease}
+                onDecrease={handleDecrease}
+                onRemove={handleRemove}
               />
             ))}
           </section>
@@ -398,7 +383,7 @@ export default function Cart() {
               }
               setShowCheckout(true);
             }}
-            onClearCartClick={clearCart}
+            onClearCartClick={handleClearCart}
             couponCode={couponCode}
             onCouponCodeChange={setCouponCode}
             onApplyCoupon={applyCoupon}

@@ -6,7 +6,7 @@ import { signOut, fetchAuthSession } from "aws-amplify/auth";
 
 import { useState, useEffect } from "react";
 
-export function AdminSidebar() {
+export function AdminSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -44,6 +44,7 @@ export function AdminSidebar() {
     { href: "/admin/products", label: "🎷 Quản Lý Sản Phẩm" },
     { href: "/admin/categories", label: "🏷️ Quản Lý Danh Mục" },
     { href: "/admin/orders", label: "📦 Quản Lý Đơn Hàng" },
+    { href: "/admin/coupons", label: "🏷️ Mã Giảm Giá" },
     { href: "/admin/campaigns", label: "📣 Chiến Dịch Marketing" },
     { href: "/admin/users", label: "👥 Quản Lý Người Dùng" },
     { href: "/admin/chat", label: "💬 Trò Chuyện (Support)" },
@@ -65,6 +66,7 @@ export function AdminSidebar() {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onClose}
             className={`text-left text-sm font-semibold px-4 py-3 rounded-xl transition-colors ${
               isActive(item.href, item.exact)
                 ? "bg-[#DF9E47] text-[#002B1F]"
@@ -77,12 +79,6 @@ export function AdminSidebar() {
       </nav>
 
       <div className="mt-auto pt-4 border-t border-white/10 flex flex-col gap-1">
-        <Link
-          href="/"
-          className="text-sm font-semibold text-white/60 hover:text-[#DF9E47] transition-colors px-4 py-3"
-        >
-          🏠 Quay lại Cửa Hàng
-        </Link>
         <button
           type="button"
           onClick={handleSignOut}

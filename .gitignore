@@ -152,3 +152,6 @@ cdk-outputs.json
 .claude
 .agents
 
+# Local npm cache
+.npm-cache/
+

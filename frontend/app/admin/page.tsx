@@ -8,6 +8,7 @@ import type { Order } from "../../types/cart";
 import { StatCard } from "../components/admin/StatCard";
 import { ORDER_STATUSES, getStatusClasses } from "../components/order/OrderTable";
 import MusicLoading from "../components/common/MusicLoading";
+import { formatOrderCode } from "../lib/order";
 
 interface AdminUser {
   userId: string;
@@ -165,7 +166,7 @@ export default function AdminDashboardPage() {
             {recentOrders.map((order) => (
               <div key={order.id} className="flex items-center justify-between py-3 gap-4">
                 <div className="min-w-0">
-                  <p className="font-mono text-xs font-semibold text-slate-600 truncate">{order.id}</p>
+                  <p className="font-mono text-xs font-semibold text-slate-600 truncate">{formatOrderCode(order)}</p>
                   <p className="text-sm text-[#002B1F] font-semibold truncate">
                     {order.customer?.name || "Chưa cập nhật"}
                   </p>

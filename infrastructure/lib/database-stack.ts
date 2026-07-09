@@ -19,6 +19,7 @@ export class DatabaseStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // Tối ưu chi phí serverless
       removalPolicy: cdk.RemovalPolicy.DESTROY, // Xóa table khi destroy stack (chỉ dùng cho Dev)
       pointInTimeRecovery: true, // Kích hoạt Point-in-Time Recovery (PITR) cho DynamoDB
+      timeToLiveAttribute: 'ttl', // Dùng cho các item có vòng đời ngắn (vd. mã OTP xác minh thiết bị)
     });
 
     // Thêm Global Secondary Index (GSI1) cho Single Table Design

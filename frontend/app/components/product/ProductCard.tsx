@@ -8,6 +8,7 @@ import { useCart } from "../../context/CartContext";
 import { useToast } from "../../context/ToastContext";
 import { useWishlist } from "../../context/WishlistContext";
 import type { Product } from "../../../types/product";
+import { slugify } from "../../../lib/products";
 
 type ProductCardProps = {
   product: Product;
@@ -63,7 +64,7 @@ export function ProductCard({ product }: ProductCardProps) {
       onMouseLeave={() => setIsHovered(false)}
     >
       <Link 
-        href={`/product/${product.id}`} 
+        href={`/products/${slugify(product.name)}-${product.id}`} 
         className="block relative w-full bg-[#F3EFEA] dark:bg-[#031d16] overflow-hidden"
         style={{ paddingTop: '85%' }}
       >
@@ -98,7 +99,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {product.brand}
         </p>
 
-        <Link href={`/product/${product.id}`} className="block">
+        <Link href={`/products/${slugify(product.name)}-${product.id}`} className="block">
           <h3 className="font-serif text-primary text-lg leading-snug font-semibold line-clamp-2 mb-2 group-hover:text-[#A36B2B] transition-colors" style={{ minHeight: '3.5rem' }}>
             {product.name}
           </h3>

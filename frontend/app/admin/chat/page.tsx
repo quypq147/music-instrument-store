@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 import MusicLoading from "../../components/common/MusicLoading";
-import { Send, User, CheckCircle2, AlertCircle, XCircle, Download, Paperclip } from "lucide-react";
+import { Send, User, CheckCircle2, AlertCircle, XCircle, Download, Paperclip, ArrowLeft } from "lucide-react";
 import { useToast } from "../../context/ToastContext";
 
 interface ChatSession {
@@ -382,10 +382,12 @@ export default function AdminChatPage() {
   }
 
   return (
-    <div className="h-[80vh] flex flex-col md:flex-row gap-6 font-sans">
+    <div className="h-[calc(100vh-140px)] md:h-[80vh] flex flex-col md:flex-row gap-4 md:gap-6 font-sans">
       
       {/* Cột trái: Hàng đợi và danh sách chat */}
-      <div className="w-full md:w-1/3 bg-white border border-slate-100 rounded-2xl flex flex-col overflow-hidden shadow-sm h-full">
+      <div className={`w-full md:w-1/3 bg-white border border-slate-100 rounded-2xl flex flex-col overflow-hidden shadow-sm h-full ${
+        selectedSession ? "hidden md:flex" : "flex"
+      }`}>
         
         {/* Header danh sách */}
         <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
@@ -475,12 +477,23 @@ export default function AdminChatPage() {
       </div>
 
       {/* Cột giữa: Khung chat và nội dung tin nhắn */}
-      <div className="flex-1 bg-white border border-slate-100 rounded-2xl flex flex-col overflow-hidden shadow-sm h-full">
+      <div className={`flex-1 bg-white border border-slate-100 rounded-2xl flex flex-col overflow-hidden shadow-sm h-full ${
+        selectedSession ? "flex" : "hidden md:flex"
+      }`}>
         {selectedSession ? (
           <>
             {/* Header Khung Chat */}
-            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="px-4 py-3 md:px-6 md:py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                {/* Back button on mobile */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedSession(null)}
+                  className="md:hidden p-2 -ml-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors mr-1 cursor-pointer"
+                  title="Quay lại danh sách"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
                 <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 text-base font-bold shrink-0">
                   <User className="w-5 h-5" />
                 </div>

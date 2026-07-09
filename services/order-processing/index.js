@@ -41,6 +41,38 @@ var handler = async (event) => {
         throw new Error("Order payload must include an id or orderId");
       }
       const now = (/* @__PURE__ */ new Date()).toISOString();
+      if (order.paymentMethod === "COD" && Array.isArray(order.items)) {
+        const transactItems = order.items.map((item) => {
+          const qty = Number(item.quantity || 1);
+          const productId = String(item.productId);
+          return {
+            Update: {
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY"
+              },
+              UpdateExpression: "SET stock = stock - :qty, updatedAt = :now",
+              ConditionExpression: "stock >= :qty",
+              ExpressionAttributeValues: {
+                ":qty": qty,
+                ":now": now
+              }
+            }
+          };
+        });
+        try {
+          await dynamoDb.send(
+            new import_lib_dynamodb.TransactWriteCommand({
+              TransactItems: transactItems
+            })
+          );
+          console.log(`[Order Processing] Successfully deducted stock for COD order ${orderId}`);
+        } catch (stockErr) {
+          console.error(`[Order Processing] Failed to deduct stock for COD order ${orderId} (likely out of stock)`, stockErr);
+          throw stockErr;
+        }
+      }
       const gsi1pk = order.userId ? `USER#${order.userId}` : void 0;
       const gsi1sk = gsi1pk ? `ORDER#${orderId}` : void 0;
       await dynamoDb.send(

@@ -35,16 +35,25 @@ export default function AdminCampaignsPage() {
   const fetchCampaigns = async () => {
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        showToast("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.", "error");
+        return;
+      }
       const res = await fetch("/api/admin/campaigns", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Failed to fetch campaigns");
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to fetch campaigns (status ${res.status})`);
+      }
       setCampaigns(data);
     } catch (error) {
       console.error("Error fetching campaigns:", error);
-      showToast("Không thể tải danh sách chiến dịch.", "error");
+      const detail = error instanceof Error ? error.message : "";
+      showToast(
+        detail ? `Không thể tải danh sách chiến dịch: ${detail}` : "Không thể tải danh sách chiến dịch.",
+        "error"
+      );
     } finally {
       setLoading(false);
     }
@@ -67,7 +76,10 @@ export default function AdminCampaignsPage() {
     setIsSubmitting(true);
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        showToast("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.", "error");
+        return;
+      }
       const res = await fetch("/api/admin/campaigns", {
         method: "POST",
         headers: {
@@ -77,6 +89,7 @@ export default function AdminCampaignsPage() {
         body: JSON.stringify({ title, message, channel, segment: "ALL" }),
       });
 
+      const data = await res.json();
       if (res.ok) {
         showToast("Đã gửi chiến dịch vào hàng đợi xử lý!", "success");
         setTitle("");
@@ -84,7 +97,8 @@ export default function AdminCampaignsPage() {
         setLoading(true);
         fetchCampaigns();
       } else {
-        showToast("Tạo chiến dịch thất bại. Vui lòng thử lại.", "error");
+        const detail = data.error ? `: ${data.error}` : "";
+        showToast(`Tạo chiến dịch thất bại${detail}`, "error");
       }
     } catch (error) {
       console.error("Error creating campaign:", error);

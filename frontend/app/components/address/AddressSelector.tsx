@@ -53,12 +53,28 @@ export default function AddressSelector({
   // Tải danh sách Tỉnh / Thành phố
   useEffect(() => {
     const fetchProvinces = async () => {
+      const cacheKey = "provinces_cache";
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          setProvinces(JSON.parse(cached));
+          return;
+        }
+      } catch (e) {
+        console.warn("sessionStorage read failed", e);
+      }
+
       setLoadingProvinces(true);
       try {
         const res = await fetch("https://provinces.open-api.vn/api/p/");
         if (res.ok) {
           const data = await res.json();
           setProvinces(data);
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+          } catch (e) {
+            console.warn("sessionStorage write failed", e);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch provinces:", err);
@@ -80,6 +96,20 @@ export default function AddressSelector({
     }
 
     const fetchDistricts = async () => {
+      const cacheKey = `districts_cache_${selectedProvince}`;
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          setDistricts(JSON.parse(cached));
+          setWards([]);
+          setSelectedDistrict("");
+          setSelectedWard("");
+          return;
+        }
+      } catch (e) {
+        console.warn("sessionStorage read failed", e);
+      }
+
       setLoadingDistricts(true);
       try {
         const res = await fetch(
@@ -87,10 +117,16 @@ export default function AddressSelector({
         );
         if (res.ok) {
           const data = await res.json();
-          setDistricts(data.districts || []);
+          const distData = data.districts || [];
+          setDistricts(distData);
           setWards([]);
           setSelectedDistrict("");
           setSelectedWard("");
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(distData));
+          } catch (e) {
+            console.warn("sessionStorage write failed", e);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch districts:", err);
@@ -110,6 +146,18 @@ export default function AddressSelector({
     }
 
     const fetchWards = async () => {
+      const cacheKey = `wards_cache_${selectedDistrict}`;
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          setWards(JSON.parse(cached));
+          setSelectedWard("");
+          return;
+        }
+      } catch (e) {
+        console.warn("sessionStorage read failed", e);
+      }
+
       setLoadingWards(true);
       try {
         const res = await fetch(
@@ -117,8 +165,14 @@ export default function AddressSelector({
         );
         if (res.ok) {
           const data = await res.json();
-          setWards(data.wards || []);
+          const wardData = data.wards || [];
+          setWards(wardData);
           setSelectedWard("");
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(wardData));
+          } catch (e) {
+            console.warn("sessionStorage write failed", e);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch wards:", err);

@@ -150,6 +150,16 @@ var handler = async (event) => {
     const request = parseRequest(event.body);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const orderId = `ord_${Date.now()}_${(0, import_node_crypto.randomUUID)().slice(0, 8)}`;
+    const counterResult = await dynamoDb.send(
+      new import_lib_dynamodb.UpdateCommand({
+        TableName: tableName,
+        Key: { PK: "COUNTER#ORDER", SK: "METADATA" },
+        UpdateExpression: "ADD orderSeq :incr",
+        ExpressionAttributeValues: { ":incr": 1 },
+        ReturnValues: "UPDATED_NEW"
+      })
+    );
+    const orderNumber = 1e3 + Number(counterResult.Attributes?.orderSeq ?? 0);
     const totalItems = request.items.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = request.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -171,6 +181,7 @@ var handler = async (event) => {
       PK: `ORDER#${orderId}`,
       SK: "METADATA",
       id: orderId,
+      orderNumber,
       userId: request.userId,
       email: request.email,
       customer: request.customer,
@@ -192,6 +203,7 @@ var handler = async (event) => {
     );
     return jsonResponse(201, {
       orderId,
+      orderNumber,
       status: order.status,
       totalItems,
       totalPrice,

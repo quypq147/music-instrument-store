@@ -92,7 +92,7 @@ export default function AdminUsersPage() {
       });
 
       if (res.ok) {
-        showToast("Cập nhật vai trò người dùng thành công!", "success");
+        showToast("Cập nhật thông tin người dùng thành công!", "success");
         setIsUserModalOpen(false);
         fetchUsers();
       } else {
@@ -154,29 +154,42 @@ export default function AdminUsersPage() {
       {isUserModalOpen && selectedUser && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-2xl p-6 md:p-8">
-            <h3 className="font-serif text-xl text-[#002B1F] mb-6 text-center">Cập Nhật Vai Trò Người Dùng</h3>
+            <h3 className="font-serif text-xl text-[#002B1F] mb-6 text-center">Cập Nhật Thông Tin Người Dùng</h3>
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-xs font-bold text-[#002B1F] uppercase tracking-wider mb-1">Họ và Tên</label>
-                <p className="text-sm font-semibold text-slate-800">{selectedUser.name || "Chưa cập nhật"}</p>
-              </div>
-              <div>
                 <label className="block text-xs font-bold text-[#002B1F] uppercase tracking-wider mb-1">Email</label>
-                <p className="text-sm font-semibold text-slate-800">{selectedUser.email}</p>
+                <p className="text-sm font-semibold text-slate-800 bg-slate-50 px-4 py-2.5 rounded-xl border border-gray-100">{selectedUser.email}</p>
               </div>
               <div>
-                <label className="block text-xs font-bold text-[#002B1F] uppercase tracking-wider mb-2">Vai trò người dùng</label>
-                <select
-                  value={userFormData.role}
-                  onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value })}
-                  disabled={!isAdmin}
-                  className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="User">Khách hàng (User)</option>
-                  <option value="Staff">Nhân viên (Staff)</option>
-                  <option value="Admin">Quản trị viên (Admin)</option>
-                </select>
+                <label className="block text-xs font-bold text-[#002B1F] uppercase tracking-wider mb-1.5">Họ và Tên</label>
+                <input
+                  type="text"
+                  value={userFormData.name}
+                  onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
+                  placeholder="Nhập họ và tên..."
+                  className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#002B1F] uppercase tracking-wider mb-1.5">Số điện thoại</label>
+                <input
+                  type="text"
+                  value={userFormData.phone}
+                  onChange={(e) => setUserFormData({ ...userFormData, phone: e.target.value })}
+                  placeholder="Nhập số điện thoại..."
+                  className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 outline-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#002B1F] uppercase tracking-wider mb-1.5">Địa chỉ</label>
+                <textarea
+                  value={userFormData.address}
+                  onChange={(e) => setUserFormData({ ...userFormData, address: e.target.value })}
+                  placeholder="Nhập địa chỉ nhận hàng..."
+                  rows={2}
+                  className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 outline-none resize-none focus:border-[#002B1F] focus:shadow-[0_0_0_1px_#002B1F] transition-all"
+                />
               </div>
             </div>
 

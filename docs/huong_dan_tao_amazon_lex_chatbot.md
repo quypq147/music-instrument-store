@@ -31,8 +31,8 @@ Trong dự án này, tệp tin backend [frontend/app/api/chat/route.ts](file:///
 
 ### Bước 2.3: Thêm ngôn ngữ cho Bot
 1. **Select language**: Chọn **English (US)**.
-   > [!NOTE]
-   > File [route.ts](file:///E:/Project/repo/music-instrument-store/frontend/app/api/chat/route.ts) hiện tại đang cấu hình cứng tham số `localeId: "en_US"`. Nếu muốn hỗ trợ Tiếng Việt (`vi_VN`), bạn có thể thêm ngôn ngữ Tiếng Việt trên Lex và cập nhật lại tham số `localeId` trong code Next.js thành `"vi_VN"`.
+   > [!WARNING]
+   > Bot này **chỉ build locale `en_US`**, dù toàn bộ sample utterances và closing response đều là tiếng Việt — "locale" ở đây chỉ là tên bucket cấu hình trên Lex, không phải ngôn ngữ thật sự của nội dung. Không có locale `vi_VN` nào tồn tại trên bot. File [route.ts](file:///E:/Project/repo/music-instrument-store/frontend/app/api/chat/route.ts) phải gọi thẳng `localeId: "en_US"` — từng có một lần thử gọi `vi_VN` trước rồi fallback sang `en_US`, khiến MỌI tin nhắn tốn 1 lần gọi lỗi (`ResourceNotFoundException`) trước khi rơi về `en_US`; lỗi này đã được sửa (route.ts giờ gọi thẳng `en_US`, không còn fallback). Nếu thật sự muốn thêm locale `vi_VN` thật, phải build lại toàn bộ intent/utterance trên locale đó trên Lex Console trước, việc đổi `localeId` trong code không tự tạo ra locale mới.
 2. **Voice interaction**: Chọn giọng nói cho bot (nếu sử dụng Voice, ví dụ: *Joanna* hoặc *Matthew*). Bạn có thể giữ mặc định.
 3. Nhấp **Done**.
 
@@ -81,6 +81,19 @@ Sau khi tạo Bot, bạn sẽ được đưa vào giao diện **Intent list** đ
 4. Sử dụng giá trị slot trong **Closing responses**:
    * *Đang kiểm tra trạng thái đơn hàng {orderId} của bạn. Bạn vui lòng truy cập trang 'Đơn đã mua' để xem cập nhật mới nhất nhé.*
 5. Nhấp **Save intent**.
+
+### Bước 3.4: Các FAQ Intent (Chính sách cửa hàng)
+
+Ngoài 3 intent chính ở trên, bot còn có 4 intent FAQ tĩnh — mỗi intent chỉ có sample utterances và một closing response cố định, không cần Lambda fulfillment (cùng kiểu với `WelcomeIntent`):
+
+| Intent | Mục đích |
+|---|---|
+| `ReturnPolicyIntent` | Trả lời câu hỏi về chính sách đổi trả / hoàn tiền. |
+| `WarrantyIntent` | Trả lời câu hỏi về thời hạn và điều kiện bảo hành. |
+| `ShippingIntent` | Trả lời câu hỏi về phí và thời gian vận chuyển. |
+| `PaymentMethodIntent` | Trả lời câu hỏi về các hình thức thanh toán được hỗ trợ (COD, chuyển khoản, thẻ). |
+
+Tạo mỗi intent theo đúng quy trình ở Bước 3.1 (Add empty intent -> nhập sample utterances -> nhập closing response -> Save intent).
 
 ---
 

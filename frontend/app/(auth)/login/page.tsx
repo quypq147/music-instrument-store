@@ -9,6 +9,8 @@ import { signIn, fetchAuthSession, signInWithRedirect } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../context/ToastContext";
 import { Eye, EyeOff, Lock, ArrowRight, Music, Sun, Moon } from "lucide-react";
+import { applyRememberMePreference } from "../../lib/authStorage";
+import { getOrCreateDeviceId } from "../../lib/deviceId";
 
 // Fallback configuration if not initialized in the module scope
 if (!Amplify.getConfig().Auth?.Cognito) {
@@ -68,26 +70,49 @@ export default function Login() {
     }
     setIsSubmitting(true);
     try {
+      applyRememberMePreference(rememberMe);
       await signIn({
         username: email,
         password: password,
       });
 
       let isAdminOrStaff = false;
+      let token = "";
       try {
         const session = await fetchAuthSession();
         const groups = session.tokens?.idToken?.payload["cognito:groups"] as string[] | undefined;
         isAdminOrStaff = !!(groups && (groups.includes("Admin") || groups.includes("Staff")));
+        token = session.tokens?.idToken?.toString() || "";
       } catch (sessionError) {
         console.warn("Could not fetch session in login redirect:", sessionError);
       }
+
+      const redirectTarget = isAdminOrStaff ? "/admin" : "/";
+
+      if (token && !isAdminOrStaff) {
+        try {
+          const deviceId = getOrCreateDeviceId();
+          const checkRes = await fetch("/api/auth/device/check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ deviceId }),
+          });
+          const checkData = await checkRes.json();
+
+          if (checkRes.ok && checkData.trusted === false) {
+            router.push(`/verify-device?redirect=${encodeURIComponent(redirectTarget)}`);
+            return;
+          }
+        } catch (deviceCheckError) {
+          // Nếu bước kiểm tra thiết bị lỗi (vd. mạng chập chờn), không chặn đăng nhập —
+          // đây là lớp bảo vệ bổ sung, không phải điều kiện bắt buộc để vào được app.
+          console.warn("Device check failed, proceeding without it:", deviceCheckError);
+        }
+      }
+
       showToast("Đăng nhập thành công!", "success");
       router.refresh();
-      if (isAdminOrStaff) {
-        window.location.href = "/admin";
-      } else {
-        window.location.href = "/";
-      }
+      window.location.href = redirectTarget;
     } catch (err) {
       const error = err as Error;
       showToast(error.message || "Tên đăng nhập hoặc mật khẩu không đúng!", "error");
