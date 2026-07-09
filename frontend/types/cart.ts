@@ -15,6 +15,7 @@ export interface Customer {
 
 export interface Order {
   id: string;
+  orderNumber?: number;
   customer?: Customer;
   paymentMethod: string;
   products?: CartItem[];

@@ -44,3 +44,6 @@ next-env.d.ts
 tests
 screenshots
 test-results
+
+#NPM Cache
+.npm-cache

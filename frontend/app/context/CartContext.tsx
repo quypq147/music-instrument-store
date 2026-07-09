@@ -23,6 +23,7 @@ interface CartContextType {
   decreaseQuantity: (id: number) => void;
   removeItem: (id: number) => void;
   totalItems: number;
+  setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
 }
 
 const CartContext = createContext<CartContextType | null>(
@@ -150,6 +151,7 @@ export function CartProvider({
         decreaseQuantity,
         removeItem,
         totalItems,
+        setCart,
       }}
     >
       {children}

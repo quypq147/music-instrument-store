@@ -82,21 +82,38 @@ export class BackendStack extends cdk.Stack {
 
     // Product API Lambda
     const productApiLambda = new lambda.Function(this, "ProductApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/product-api"),
       environment: {
         TABLE_NAME: props.productsTable.tableName,
         BUCKET_NAME: props.productsBucket.bucketName,
         EVENT_BUS_NAME: eventBus.eventBusName,
+        USER_POOL_ID: props.userPool?.userPoolId || "",
       },
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
+    // Cho phép Product API đồng bộ Cognito Group (Admin/Staff) khi admin đổi vai trò user
+    // và đọc danh sách thành viên nhóm để hiển thị đúng quyền thật trong /admin/staff, /admin/users
+    if (props.userPool) {
+      productApiLambda.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: [
+            "cognito-idp:AdminAddUserToGroup",
+            "cognito-idp:AdminRemoveUserFromGroup",
+            "cognito-idp:ListUsersInGroup",
+            "cognito-idp:ListUsers",
+          ],
+          resources: [props.userPool.userPoolArn],
+        })
+      );
+    }
+
     // Order API Lambda (Đẩy đơn hàng vào SQS)
     const orderApiLambda = new lambda.Function(this, "OrderApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/order-api"),
       environment: {
@@ -109,7 +126,7 @@ export class BackendStack extends cdk.Stack {
 
     // Order Processing Lambda (Đọc SQS và lưu vào DynamoDB)
     const orderProcessingLambda = new lambda.Function(this, "OrderProcessingFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/order-processing"),
       environment: {
@@ -122,7 +139,7 @@ export class BackendStack extends cdk.Stack {
 
     // Checkout Service Lambda (Stripe integration)
     const checkoutApiLambda = new lambda.Function(this, "CheckoutApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/checkout-service"),
       environment: {
@@ -133,22 +150,9 @@ export class BackendStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
-    // Chatbot AI Lambda (Amazon Lex integration)
-    const chatbotApiLambda = new lambda.Function(this, "ChatbotApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "chatBotHandler.handler",
-      code: lambda.Code.fromAsset("../services/chatbot-backend"),
-      environment: {
-        LEX_BOT_ID: process.env.LEX_BOT_ID || "dummy-bot-id",
-        LEX_BOT_ALIAS_ID: process.env.LEX_BOT_ALIAS_ID || "dummy-alias-id",
-      },
-      tracing: lambda.Tracing.ACTIVE,
-      logRetention: logs.RetentionDays.ONE_WEEK,
-    });
-
     // Notification Service Lambda (Lắng nghe NotificationQueue hoặc gọi đồng bộ)
     const notificationApiLambda = new lambda.Function(this, "NotificationApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/notification"),
       environment: {
@@ -159,24 +163,28 @@ export class BackendStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
+    // productApiLambda gọi thẳng (Invoke) vào notificationApiLambda để gửi email OTP xác minh
+    // thiết bị đồng bộ, không qua EventBridge/SQS (độ trễ khó đoán) hay route API Gateway công khai.
+    productApiLambda.addEnvironment("NOTIFICATION_FUNCTION_NAME", notificationApiLambda.functionName);
+    notificationApiLambda.grantInvoke(productApiLambda);
+
     // Campaign Sender Lambda (tiêu thụ CampaignQueue, dùng chung code với NotificationApiFunction
-    // nhưng là Lambda riêng + reservedConcurrentExecutions thấp để không tranh compute với luồng giao dịch)
+    // nhưng là Lambda riêng để tách biệt log/scaling với luồng giao dịch)
     const campaignSenderLambda = new lambda.Function(this, "CampaignSenderFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.campaignHandler",
       code: lambda.Code.fromAsset("../services/notification"),
       environment: {
         TABLE_NAME: props.productsTable.tableName,
         SES_FROM_EMAIL: process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com",
       },
-      reservedConcurrentExecutions: 2,
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
     // Campaign API Lambda (Admin tạo/liệt kê chiến dịch)
     const campaignApiLambda = new lambda.Function(this, "CampaignApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/campaign-api"),
       environment: {
@@ -189,7 +197,7 @@ export class BackendStack extends cdk.Stack {
 
     // Campaign Fan-out Lambda (EventBridge trigger, chia batch khách hàng vào CampaignQueue)
     const campaignFanOutLambda = new lambda.Function(this, "CampaignFanOutFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/campaign-fanout"),
       environment: {
@@ -202,7 +210,7 @@ export class BackendStack extends cdk.Stack {
 
     // Contact API Lambda (form Liên Hệ công khai, gửi email qua SES)
     const contactApiLambda = new lambda.Function(this, "ContactApiFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/contact-api"),
       environment: {
@@ -215,7 +223,7 @@ export class BackendStack extends cdk.Stack {
 
     // Stripe Payment Webhook Lambda
     const paymentWebhookLambda = new lambda.Function(this, "PaymentWebhookFunction", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/payment-webhook"),
       environment: {
@@ -331,14 +339,6 @@ export class BackendStack extends cdk.Stack {
       })
     );
 
-    // Quyền gọi Lex V2 cho Chatbot Lambda
-    chatbotApiLambda.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["lex:RecognizeText"],
-        resources: ["*"],
-      })
-    );
-
     // 7. Khởi tạo API Gateway REST API
     const api = new apigateway.RestApi(this, "ECommerceApi", {
       restApiName: "Music Store API",
@@ -441,6 +441,17 @@ export class BackendStack extends cdk.Stack {
       } : undefined
     );
 
+    // Route: /products/{id}/image-upload-url (sinh presigned POST để admin upload ảnh sản phẩm)
+    const productImageUploadUrlResource = productResource.addResource("image-upload-url");
+    productImageUploadUrlResource.addMethod(
+      "POST",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
     // Route: /products/{id}/comments
     const commentsResource = productResource.addResource("comments");
     commentsResource.addMethod(
@@ -498,6 +509,41 @@ export class BackendStack extends cdk.Stack {
     );
     profileResource.addMethod(
       "PUT",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // Route: /users/profile/avatar-upload-url (sinh presigned POST để upload ảnh đại diện)
+    const avatarUploadUrlResource = profileResource.addResource("avatar-upload-url");
+    avatarUploadUrlResource.addMethod(
+      "POST",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // Route: /auth/device/check, /auth/device/verify (xác minh thiết bị/OTP khi đăng nhập)
+    const authResource = api.root.addResource("auth");
+    const deviceResource = authResource.addResource("device");
+
+    const deviceCheckResource = deviceResource.addResource("check");
+    deviceCheckResource.addMethod(
+      "POST",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    const deviceVerifyResource = deviceResource.addResource("verify");
+    deviceVerifyResource.addMethod(
+      "POST",
       productApiIntegration,
       authorizer ? {
         authorizer,
@@ -574,6 +620,17 @@ export class BackendStack extends cdk.Stack {
       } : undefined
     );
 
+    // Route: /orders/{id}/confirm-receipt (PUT - Khách hàng tự xác nhận đã nhận hàng)
+    const orderConfirmReceiptResource = orderIdResource.addResource("confirm-receipt");
+    orderConfirmReceiptResource.addMethod(
+      "PUT",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
     // Route: /orders/{id}/history (GET - Staff hoặc chủ đơn hàng)
     const orderHistoryResource = orderIdResource.addResource("history");
     orderHistoryResource.addMethod(
@@ -596,6 +653,16 @@ export class BackendStack extends cdk.Stack {
       } : undefined
     );
 
+    // GET /coupons (Admin/Staff liệt kê toàn bộ coupon)
+    couponsResource.addMethod(
+      "GET",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
     // Route: /coupons/{code} (GET - public preview/validate)
     const couponCodeResource = couponsResource.addResource("{code}");
     couponCodeResource.addMethod(
@@ -603,22 +670,29 @@ export class BackendStack extends cdk.Stack {
       productApiIntegration
     );
 
+    // PUT/DELETE /coupons/{code} (Admin/Staff sửa hoặc xóa coupon)
+    couponCodeResource.addMethod(
+      "PUT",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+    couponCodeResource.addMethod(
+      "DELETE",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
     // Route: /checkout
     const checkoutResource = api.root.addResource("checkout");
     checkoutResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(checkoutApiLambda)
-    );
-
-    // Route: /chat
-    const chatResource = api.root.addResource("chat");
-    chatResource.addMethod(
-      "POST",
-      new apigateway.LambdaIntegration(chatbotApiLambda),
-      authorizer ? {
-        authorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
-      } : undefined
     );
 
     // Route: /notifications

@@ -28,6 +28,7 @@ interface DbOrderItem {
 
 interface DbOrder {
   id: string;
+  orderNumber?: number;
   customer: {
     name: string;
     phone: string;
@@ -70,6 +71,7 @@ export default function OrdersPage() {
           const dbData = await res.json();
           const mappedOrders = dbData.map((order: DbOrder) => ({
             id: order.id,
+            orderNumber: order.orderNumber,
             customer: order.customer,
             paymentMethod: order.paymentMethod,
             products: (order.items || []).map((item: DbOrderItem) => ({
@@ -100,9 +102,16 @@ export default function OrdersPage() {
   const tabs = [
     "Chờ xác nhận",
     "Chờ lấy đơn",
-    "Chờ giao hàng",
+    "Đang giao hàng",
+    "Đã giao hàng",
     "Đánh giá",
   ];
+
+  const handleReceiptConfirmed = (orderId: string) => {
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: "Đánh giá" } : o))
+    );
+  };
 
   const filteredOrders = orders.filter(
     (order: Order) => order.status === activeTab
@@ -125,7 +134,7 @@ export default function OrdersPage() {
       ) : (
         <section>
           {filteredOrders.map((order) => (
-            <OrderCard key={order.id} order={order} />
+            <OrderCard key={order.id} order={order} onReceiptConfirmed={handleReceiptConfirmed} />
           ))}
         </section>
       )}

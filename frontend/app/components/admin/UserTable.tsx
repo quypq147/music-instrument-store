@@ -11,6 +11,7 @@ export interface AdminUser {
   phone?: string;
   address?: string;
   role?: string;
+  provider?: string;
 }
 
 interface UserTableProps {
@@ -33,7 +34,8 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
       (user.name || "").toLowerCase().includes(term) ||
       (user.email || "").toLowerCase().includes(term) ||
       (user.phone || "").toLowerCase().includes(term) ||
-      (user.role || "").toLowerCase().includes(term)
+      (user.role || "").toLowerCase().includes(term) ||
+      (user.provider || "").toLowerCase().includes(term)
     );
   });
 
@@ -73,6 +75,7 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
               <th className="p-4">Email</th>
               <th className="p-4">Số điện thoại</th>
               <th className="p-4">Địa chỉ</th>
+              <th className="p-4">Nền tảng</th>
               <th className="p-4">Vai trò</th>
               <th className="p-4 text-right">Thao tác</th>
             </tr>
@@ -80,7 +83,7 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
           <tbody className="divide-y divide-gray-100">
             {paginatedUsers.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-16 text-slate-500">
+                <td colSpan={7} className="text-center py-16 text-slate-500">
                   Không tìm thấy người dùng nào.
                 </td>
               </tr>
@@ -93,6 +96,34 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
                     <td className="p-4 text-slate-600">{user.email}</td>
                     <td className="p-4 text-slate-600">{user.phone || "Chưa cập nhật"}</td>
                     <td className="p-4 max-w-52 truncate text-slate-600">{user.address || "Chưa cập nhật"}</td>
+                    <td className="p-4">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+                          user.provider?.toLowerCase() === "google"
+                            ? "bg-blue-50 text-blue-600 border border-blue-100"
+                            : user.provider?.toLowerCase() === "facebook"
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                            : "bg-slate-100 text-slate-700 border border-slate-200"
+                        }`}
+                      >
+                        {user.provider?.toLowerCase() === "google" ? (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            Google
+                          </>
+                        ) : user.provider?.toLowerCase() === "facebook" ? (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                            Facebook
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                            Email
+                          </>
+                        )}
+                      </span>
+                    </td>
                     <td className="p-4">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
@@ -114,7 +145,7 @@ export function UserTable({ users, search, onSearchChange, onEditUser, onDeleteU
                           disabled={isDeleting}
                           className="text-xs font-bold text-[#002B1F] hover:underline px-3 py-1.5 hover:bg-[#F3EFEA] rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Sửa vai trò
+                          Sửa thông tin
                         </button>
                         <button
                           type="button"

@@ -1,31 +1,78 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
+import { fetchAuthSession } from "aws-amplify/auth";
 import type { Order } from "../../../types/cart";
+import { formatOrderCode } from "../../lib/order";
+import { useToast } from "../../context/ToastContext";
 
 interface OrderCardProps {
   order: Order;
   showSummaryOnly?: boolean;
   onViewDetails?: () => void;
+  onReceiptConfirmed?: (orderId: string) => void;
 }
 
-export function OrderCard({ order, showSummaryOnly = false, onViewDetails }: OrderCardProps) {
+// Trạng thái cũ "Chờ giao hàng" được coi tương đương "Đang giao hàng" cho đơn hàng lịch sử
+const IN_TRANSIT_STATUSES = ["Chờ giao hàng", "Đang giao hàng"];
+
+export function OrderCard({ order, showSummaryOnly = false, onViewDetails, onReceiptConfirmed }: OrderCardProps) {
+  const { showToast } = useToast();
+  const [isConfirming, setIsConfirming] = useState(false);
+
   const isStep2Active =
     order.status === "Chờ lấy đơn" ||
-    order.status === "Chờ giao hàng" ||
+    IN_TRANSIT_STATUSES.includes(order.status) ||
+    order.status === "Đã giao hàng" ||
     order.status === "Đánh giá";
 
   const isStep3Active =
-    order.status === "Chờ giao hàng" || order.status === "Đánh giá";
+    IN_TRANSIT_STATUSES.includes(order.status) ||
+    order.status === "Đã giao hàng" ||
+    order.status === "Đánh giá";
 
-  const isStep4Active = order.status === "Đánh giá";
+  const isStep4Active = order.status === "Đã giao hàng" || order.status === "Đánh giá";
+
+  const isStep5Active = order.status === "Đánh giá";
 
   const steps = [
     { label: "Chờ xác nhận", active: true },
     { label: "Chờ lấy đơn", active: isStep2Active },
-    { label: "Chờ giao hàng", active: isStep3Active },
-    { label: "Đánh giá", active: isStep4Active },
+    { label: "Đang giao hàng", active: isStep3Active },
+    { label: "Đã giao hàng", active: isStep4Active },
+    { label: "Đánh giá", active: isStep5Active },
   ];
+
+  const handleConfirmReceipt = async () => {
+    setIsConfirming(true);
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+      if (!token) {
+        showToast("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.", "error");
+        return;
+      }
+
+      const res = await fetch(`/api/orders/${order.id}/confirm-receipt`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        showToast("Đã xác nhận nhận hàng. Cảm ơn bạn!", "success");
+        onReceiptConfirmed?.(order.id);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || data.message || "Không thể xác nhận nhận hàng.", "error");
+      }
+    } catch (error) {
+      console.error("Failed to confirm receipt:", error);
+      showToast("Đã xảy ra lỗi khi xác nhận nhận hàng.", "error");
+    } finally {
+      setIsConfirming(false);
+    }
+  };
 
   if (showSummaryOnly) {
     return (
@@ -33,7 +80,7 @@ export function OrderCard({ order, showSummaryOnly = false, onViewDetails }: Ord
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-4 border-b border-gray-100 dark:border-primary-container/20">
           <div>
-            <h2 className="font-serif text-base text-[#002B1F] dark:text-[#80bea6] font-bold">Mã đơn: {order.id}</h2>
+            <h2 className="font-serif text-base text-[#002B1F] dark:text-[#80bea6] font-bold">Mã đơn: {formatOrderCode(order)}</h2>
             <p className="text-xs text-slate-500 dark:text-emerald-100/50 mt-0.5">Ngày đặt: {order.createdAt}</p>
           </div>
           <div>
@@ -94,7 +141,7 @@ export function OrderCard({ order, showSummaryOnly = false, onViewDetails }: Ord
     <div className="bg-white dark:bg-[#06261d] rounded-2xl border border-gray-100 dark:border-primary-container/20 p-6 mb-6 transition-colors duration-300">
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h2 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6]">Mã đơn: {order.id}</h2>
+          <h2 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6]">Mã đơn: {formatOrderCode(order)}</h2>
           <p className="text-sm text-slate-500 dark:text-emerald-100/50 mt-1">Ngày đặt: {order.createdAt}</p>
         </div>
 
@@ -146,8 +193,20 @@ export function OrderCard({ order, showSummaryOnly = false, onViewDetails }: Ord
         <p><strong className="text-[#002B1F] dark:text-[#80bea6]">Địa chỉ:</strong> {order.customer?.address || "Chưa cập nhật"}</p>
       </div>
 
-      <div className="flex justify-end border-t border-gray-100 dark:border-primary-container/20 pt-4 font-bold text-[#A36B2B] dark:text-secondary">
-        Tổng tiền: {(order.totalPrice || 0).toLocaleString("vi-VN")}đ
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-t border-gray-100 dark:border-primary-container/20 pt-4">
+        <div className="font-bold text-[#A36B2B] dark:text-secondary">
+          Tổng tiền: {(order.totalPrice || 0).toLocaleString("vi-VN")}đ
+        </div>
+        {order.status === "Đã giao hàng" && (
+          <button
+            type="button"
+            onClick={handleConfirmReceipt}
+            disabled={isConfirming}
+            className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isConfirming ? "Đang xác nhận..." : "✅ Xác nhận đã nhận hàng"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -5,17 +5,24 @@
   "main": "index.js",
   "scripts": {
     "build": "echo \"product-api has no build step yet\"",
-    "test": "echo \"No tests configured for product-api\""
+    "test": "jest"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1075.0",
     "@aws-sdk/client-dynamodb": "^3.1075.0",
-    "@aws-sdk/lib-dynamodb": "^3.1075.0",
     "@aws-sdk/client-eventbridge": "^3.1075.0",
+    "@aws-sdk/client-lambda": "^3.1075.0",
     "@aws-sdk/client-s3": "^3.1075.0",
+    "@aws-sdk/lib-dynamodb": "^3.1075.0",
     "@aws-sdk/s3-presigned-post": "^3.1075.0",
     "@music-store/shared-types": "0.1.0"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.152"
+    "@types/aws-lambda": "^8.10.152",
+    "@types/jest": "^29.5.14",
+    "aws-sdk-client-mock": "^4.1.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.11",
+    "typescript": "~5.3.3"
   }
 }

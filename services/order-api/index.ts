@@ -206,6 +206,19 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const request = parseRequest(event.body);
     const now = new Date().toISOString();
     const orderId = `ord_${Date.now()}_${randomUUID().slice(0, 8)}`;
+
+    // Mã đơn ngắn, dễ đọc (#1001, #1002, ...) để hiển thị cho khách/nhân viên,
+    // orderId đầy đủ ở trên vẫn là khóa chính thật sự dùng nội bộ.
+    const counterResult = await dynamoDb.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { PK: "COUNTER#ORDER", SK: "METADATA" },
+        UpdateExpression: "ADD orderSeq :incr",
+        ExpressionAttributeValues: { ":incr": 1 },
+        ReturnValues: "UPDATED_NEW",
+      })
+    );
+    const orderNumber = 1000 + Number(counterResult.Attributes?.orderSeq ?? 0);
     const totalItems = request.items.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = request.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -230,6 +243,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       PK: `ORDER#${orderId}`,
       SK: "METADATA",
       id: orderId,
+      orderNumber,
       userId: request.userId,
       email: request.email,
       customer: request.customer,
@@ -254,6 +268,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     return jsonResponse(201, {
       orderId,
+      orderNumber,
       status: order.status,
       totalItems,
       totalPrice,

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ProductCard } from "../components/product/ProductCard";
+import { FeaturedProductsCarousel } from "../components/product/FeaturedProductsCarousel";
 import { getProducts } from "../../lib/products";
 import HomeRedirect from "../components/common/HomeRedirect";
 
@@ -164,15 +164,7 @@ export default async function Home() {
             <p className="text-center text-gray-500">{error}</p>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12">
-                {featuredProducts.length > 0 ? (
-                  featuredProducts.map((product) => (
-                    <ProductCard key={product.id} product={product} />
-                  ))
-                ) : (
-                  <p className="text-center text-gray-500">Không có sản phẩm nào nổi bật.</p>
-                )}
-              </div>
+              <FeaturedProductsCarousel products={featuredProducts} />
               <div className="text-center">
                 <Link
                   href="/products"

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { Product } from "../../../types/product";
+import { ImagePicker } from "../common/ImagePicker";
+import { useToast } from "../../context/ToastContext";
 
 interface ProductFormData {
   id: string;
@@ -11,6 +13,7 @@ interface ProductFormData {
   price: number;
   imageUrl: string;
   description: string;
+  stock: number;
 }
 
 interface ProductModalProps {
@@ -21,6 +24,7 @@ interface ProductModalProps {
   isSubmitting: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onClose: () => void;
+  authToken: string;
 }
 
 const inputClasses =
@@ -35,7 +39,9 @@ export function ProductModal({
   isSubmitting,
   onSubmit,
   onClose,
+  authToken,
 }: ProductModalProps) {
+  const { showToast } = useToast();
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -110,7 +116,7 @@ export function ProductModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="prod-brand" className={labelClasses}>Thương hiệu</label>
               <input
@@ -139,6 +145,9 @@ export function ProductModal({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="prod-price" className={labelClasses}>Giá bán (VND)</label>
               <input
@@ -151,18 +160,30 @@ export function ProductModal({
                 className={inputClasses}
               />
             </div>
+            <div>
+              <label htmlFor="prod-stock" className={labelClasses}>Số lượng tồn kho</label>
+              <input
+                id="prod-stock"
+                type="number"
+                min="0"
+                value={formData.stock}
+                onChange={(e) => onChangeField("stock", Number(e.target.value))}
+                disabled={isSubmitting}
+                placeholder="Ví dụ: 10"
+                className={inputClasses}
+              />
+            </div>
           </div>
 
           <div>
-            <label htmlFor="prod-image" className={labelClasses}>Đường dẫn hình ảnh (URL)</label>
-            <input
-              id="prod-image"
-              type="text"
-              value={formData.imageUrl}
-              onChange={(e) => onChangeField("imageUrl", e.target.value)}
+            <label className={labelClasses}>Hình ảnh sản phẩm</label>
+            <ImagePicker
+              currentImageUrl={formData.imageUrl}
+              uploadUrlEndpoint={`/api/products/${formData.id}/image-upload-url`}
+              authToken={authToken}
+              onUploaded={(publicUrl) => onChangeField("imageUrl", publicUrl)}
+              onError={(message) => showToast(message, "error")}
               disabled={isSubmitting}
-              placeholder="Ví dụ: /images/yamaha-yas280.jpg hoặc link https://"
-              className={inputClasses}
             />
           </div>
 

@@ -10,9 +10,18 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import {
+  CognitoIdentityProviderClient,
+  ListUsersCommand,
+  ListUsersInGroupCommand,
+  AdminAddUserToGroupCommand,
+  AdminRemoveUserFromGroupCommand,
+} from "@aws-sdk/client-cognito-identity-provider";
 import { randomUUID } from "node:crypto";
+import type { UserProfile } from "@music-store/shared-types";
 
 type ProductItem = {
   PK?: string;
@@ -42,6 +51,104 @@ const eventBridge = new EventBridgeClient({});
 const eventBusName = process.env.EVENT_BUS_NAME;
 const s3Client = new S3Client({});
 const bucketName = process.env.BUCKET_NAME;
+const cognitoClient = new CognitoIdentityProviderClient({});
+const userPoolId = process.env.USER_POOL_ID;
+
+// Lấy toàn bộ userId (sub) đang là thành viên của 1 Cognito Group, dùng để hiển thị
+// đúng quyền thật (thay vì tin vào field `role` lưu trong DynamoDB có thể bị lệch).
+const listGroupUserIds = async (groupName: string): Promise<Set<string>> => {
+  const ids = new Set<string>();
+  if (!userPoolId) return ids;
+
+  let nextToken: string | undefined;
+  do {
+    const result = await cognitoClient.send(
+      new ListUsersInGroupCommand({
+        UserPoolId: userPoolId,
+        GroupName: groupName,
+        NextToken: nextToken,
+      })
+    );
+    for (const user of result.Users ?? []) {
+      const sub = user.Attributes?.find((attr) => attr.Name === "sub")?.Value;
+      if (sub) ids.add(sub);
+    }
+    nextToken = result.NextToken;
+  } while (nextToken);
+
+  return ids;
+};
+
+// Toàn bộ user trong Cognito User Pool (không chỉ user đã có PROFILE trong DynamoDB) —
+// dùng để merge vào danh sách admin, tránh trường hợp user bị "biến mất" khỏi trang
+// quản trị chỉ vì chưa từng có bản ghi PROFILE (vd. backfill chưa chạy ở môi trường này).
+const listAllCognitoUsers = async (): Promise<
+  Array<{ userId: string; email: string; name: string; username: string; identitiesStr: string }>
+> => {
+  const users: Array<{ userId: string; email: string; name: string; username: string; identitiesStr: string }> = [];
+  if (!userPoolId) return users;
+
+  let paginationToken: string | undefined;
+  do {
+    const result = await cognitoClient.send(
+      new ListUsersCommand({
+        UserPoolId: userPoolId,
+        PaginationToken: paginationToken,
+      })
+    );
+    for (const user of result.Users ?? []) {
+      const sub = user.Attributes?.find((attr) => attr.Name === "sub")?.Value;
+      if (!sub) continue;
+      const email = user.Attributes?.find((attr) => attr.Name === "email")?.Value || "";
+      const name = user.Attributes?.find((attr) => attr.Name === "name")?.Value || "";
+      const username = user.Username || "";
+      const identitiesStr = user.Attributes?.find((attr) => attr.Name === "identities")?.Value || "";
+      users.push({ userId: sub, email, name, username, identitiesStr });
+    }
+    paginationToken = result.PaginationToken;
+  } while (paginationToken);
+
+  return users;
+};
+
+// Đồng bộ Cognito Group thật khi admin đổi vai trò user trong UI, để field `role`
+// hiển thị luôn khớp với quyền truy cập thật (thay vì chỉ là 1 field DB rời rạc).
+const syncCognitoGroup = async (targetUserId: string, role: string) => {
+  if (!userPoolId) return;
+
+  const lookup = await cognitoClient.send(
+    new ListUsersCommand({
+      UserPoolId: userPoolId,
+      Filter: `sub = "${targetUserId}"`,
+      Limit: 1,
+    })
+  );
+  const cognitoUsername = lookup.Users?.[0]?.Username;
+  if (!cognitoUsername) return;
+
+  const wantsAdmin = role === "Admin";
+  const wantsStaff = role === "Staff";
+
+  if (wantsAdmin) {
+    await cognitoClient.send(
+      new AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Admin" })
+    );
+  } else {
+    await cognitoClient.send(
+      new AdminRemoveUserFromGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Admin" })
+    );
+  }
+
+  if (wantsStaff) {
+    await cognitoClient.send(
+      new AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Staff" })
+    );
+  } else {
+    await cognitoClient.send(
+      new AdminRemoveUserFromGroupCommand({ UserPoolId: userPoolId, Username: cognitoUsername, GroupName: "Staff" })
+    );
+  }
+};
 
 const REVIEW_IMAGE_ALLOWED_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -50,6 +157,52 @@ const REVIEW_IMAGE_ALLOWED_TYPES: Record<string, string> = {
 };
 const REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5MB/ảnh
 const REVIEW_IMAGE_MAX_COUNT = 3; // tối đa 3 ảnh/đánh giá
+
+const lambdaClient = new LambdaClient({});
+const notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
+
+// Ngưỡng "thiết bị quen": trùng bậc với thời hạn refresh token mặc định của Cognito (30 ngày) —
+// đến lúc refresh token hết hạn, user bắt buộc phải đăng nhập lại thật sự, và lần đó sẽ tự
+// kích hoạt lại việc kiểm tra thiết bị, nên khoảng cách tối đa giữa 2 lần xác minh luôn bị chặn.
+const DEVICE_TRUST_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const OTP_TTL_MS = 10 * 60 * 1000;
+// Giới hạn số lần nhập sai mã OTP trước khi buộc phải đăng nhập lại để nhận mã mới —
+// không có giới hạn này thì một JWT hợp lệ (đã bị đánh cắp) có thể dò hết 900.000 mã trong
+// 10 phút hiệu lực, làm mất hết tác dụng cảnh báo "thiết bị lạ" của tính năng này.
+const MAX_OTP_ATTEMPTS = 5;
+
+const generateOtpCode = (): string => String(Math.floor(100000 + Math.random() * 900000));
+
+// Gửi email OTP bằng cách gọi thẳng (Lambda Invoke) vào handler đồng bộ có sẵn của
+// services/notification, thay vì qua EventBridge (bất đồng bộ, độ trễ khó đoán) hoặc qua
+// route API Gateway công khai /notifications (hiện chưa nơi nào gọi tới).
+const sendOtpEmail = async (email: string, code: string): Promise<void> => {
+  if (!notificationFunctionName) {
+    throw new Error("NOTIFICATION_FUNCTION_NAME environment variable is not set");
+  }
+
+  const payload = {
+    httpMethod: "POST",
+    body: JSON.stringify({
+      type: "EMAIL",
+      recipient: email,
+      title: "Mã xác minh đăng nhập - Music Instrument Store",
+      message: `Mã xác minh thiết bị mới của bạn là: ${code}. Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email này.`,
+    }),
+  };
+
+  const result = await lambdaClient.send(
+    new InvokeCommand({
+      FunctionName: notificationFunctionName,
+      InvocationType: "RequestResponse",
+      Payload: Buffer.from(JSON.stringify(payload)),
+    })
+  );
+
+  if (result.FunctionError) {
+    throw new Error(`Notification Lambda returned an error: ${result.FunctionError}`);
+  }
+};
 
 const jsonResponse = (
   statusCode: number,
@@ -67,7 +220,7 @@ const jsonResponse = (
 
 const stripTableKeys = (item: any) => {
   if (!item) return item;
-  const { PK, SK, pk, sk, createdAt, updatedAt, GSI2PK, GSI2SK, ...rest } = item;
+  const { PK, SK, pk, sk, GSI2PK, GSI2SK, ...rest } = item;
   return rest;
 };
 
@@ -77,6 +230,166 @@ const getProductId = (path?: string, pathId?: string): string | undefined => {
   }
   const match = path?.match(/^\/products\/([^/]+)$/);
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+};
+
+// Trạng thái "đã giao, chờ khách xác nhận" — chỉ khách hàng mới được chuyển tiếp từ đây
+// sang trạng thái hoàn tất (COMPLETED_STATUS), qua route /orders/{id}/confirm-receipt.
+const DELIVERED_STATUS = "Đã giao hàng";
+// Mốc duy nhất xác nhận khách đã thực sự nhận hàng: cộng soldCount + cấp quyền đánh giá (BOUGHT#).
+const COMPLETED_STATUS = "Đánh giá";
+
+const applyOrderStatusUpdate = async (
+  targetOrderId: string,
+  order: Record<string, any>,
+  status: string,
+  reason: string | undefined,
+  changedBy: string
+) => {
+  const now = new Date().toISOString();
+
+  const updatedOrder = {
+    ...order,
+    status,
+    updatedAt: now,
+  };
+
+  // RELEASE RESERVED INVENTORY FOR ONLINE ORDERS WHEN ACTIVATING FROM PENDING
+  const isActivating = (order.status === "PENDING" || order.status === "Chờ xác nhận") &&
+                        (status === "Chờ lấy đơn" || status === "Đang giao hàng");
+  const isOnlinePayment = order.paymentMethod === "VNPay" || order.paymentMethod === "Momo" || order.paymentMethod === "Stripe";
+
+  if (isActivating && isOnlinePayment && Array.isArray(order.items)) {
+    for (const item of order.items) {
+      const productId = String(item.productId);
+      const qty = Number(item.quantity || 1);
+      try {
+        await dynamoDb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY",
+            },
+            UpdateExpression: "SET reserved = reserved - :qty",
+            ExpressionAttributeValues: { ":qty": qty },
+          })
+        );
+        console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
+      } catch (reserveErr) {
+        console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+      }
+    }
+  }
+
+  await dynamoDb.send(
+    new PutCommand({
+      TableName: tableName,
+      Item: updatedOrder,
+    })
+  );
+
+  // Ghi lại lịch sử thay đổi trạng thái đơn hàng (audit trail)
+  try {
+    await dynamoDb.send(
+      new PutCommand({
+        TableName: tableName,
+        Item: {
+          PK: `ORDER#${targetOrderId}`,
+          SK: `STATUS_HISTORY#${now}`,
+          status,
+          changedBy,
+          reason: reason || "",
+          createdAt: now,
+        },
+      })
+    );
+  } catch (err) {
+    console.error(`Failed to write status history for order ${targetOrderId}`, err);
+  }
+
+  // Khi đơn hàng chuyển sang trạng thái hoàn tất lần đầu, cộng dồn soldCount cho từng sản phẩm
+  // và cấp quyền đánh giá (BOUGHT#) — đây là mốc duy nhất xác nhận khách đã thực sự nhận hàng.
+  if (status === COMPLETED_STATUS && order.status !== COMPLETED_STATUS) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    for (const item of items) {
+      if (!item?.productId || typeof item?.quantity !== "number") continue;
+      try {
+        await dynamoDb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${item.productId}`,
+              SK: "METADATA",
+            },
+            UpdateExpression: "ADD soldCount :qty",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: {
+              ":qty": item.quantity,
+            },
+          })
+        );
+      } catch (err) {
+        console.error(`Failed to increment soldCount for product ${item.productId}`, err);
+      }
+
+      if (order.userId) {
+        try {
+          await dynamoDb.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: `USER#${order.userId}`,
+                SK: `BOUGHT#${item.productId}`,
+                productId: item.productId,
+                orderId: targetOrderId,
+                purchasedAt: now,
+              },
+            })
+          );
+        } catch (err) {
+          console.error(`Failed to grant review eligibility for product ${item.productId}`, err);
+        }
+      }
+    }
+  }
+
+  // Gửi sự kiện cập nhật trạng thái đơn hàng sang EventBridge để kích hoạt gửi Mail tự động
+  if (eventBusName) {
+    const isCancellation = status === "Đã hủy";
+    const detailType = isCancellation ? "OrderCancelled" : "OrderUpdated";
+    try {
+      console.log(`Publishing ${detailType} event for order ${targetOrderId} to ${eventBusName}...`);
+      await eventBridge.send(
+        new PutEventsCommand({
+          Entries: [
+            {
+              EventBusName: eventBusName,
+              Source: "com.musicstore.order",
+              DetailType: detailType,
+              Detail: JSON.stringify({
+                eventId: randomUUID(),
+                version: "1.0",
+                orderId: targetOrderId,
+                email: order.email,
+                customer: order.customer,
+                status: status,
+                totalPrice: order.totalPrice,
+                ...(isCancellation && {
+                  reason: reason || "",
+                  cancelledBy: changedBy,
+                  items: order.items,
+                }),
+              }),
+            },
+          ],
+        })
+      );
+    } catch (err) {
+      console.error(`Failed to publish ${detailType} event to EventBridge`, err);
+    }
+  }
+
+  return updatedOrder;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -96,7 +409,206 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const authorizer = event.requestContext.authorizer;
     const userId = authorizer?.claims?.sub;
     const email = authorizer?.claims?.email;
-    const userName = authorizer?.claims?.name || email || authorizer?.claims?.["cognito:username"] || "User";
+    let userName = authorizer?.claims?.name || email || authorizer?.claims?.["cognito:username"] || "User";
+
+    // Proactively fetch the user's real name from their profile if available
+    if (userId) {
+      try {
+        const userProfile = await dynamoDb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+            },
+          })
+        );
+        if (userProfile.Item?.name) {
+          userName = userProfile.Item.name;
+        }
+      } catch (err) {
+        console.warn("Could not fetch user profile name:", err);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Route: /auth/device/check (kiểm tra thiết bị đã tin cậy hay chưa, gửi OTP nếu chưa)
+    // -------------------------------------------------------------
+    if (resource === "/auth/device/check" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+      }
+
+      // Bỏ qua xác minh thiết bị lạ cho Admin và Staff
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { trusted: true });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { deviceId } = JSON.parse(event.body);
+      if (!deviceId) {
+        return jsonResponse(400, { message: "Missing deviceId" });
+      }
+
+      const deviceRes = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: `DEVICE#${deviceId}`,
+          },
+        })
+      );
+
+      const now = Date.now();
+      const device = deviceRes.Item;
+      const isTrusted =
+        !!device &&
+        typeof device.lastSeenAt === "string" &&
+        now - new Date(device.lastSeenAt).getTime() < DEVICE_TRUST_WINDOW_MS;
+
+      if (isTrusted) {
+        await dynamoDb.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: {
+              PK: `USER#${userId}`,
+              SK: `DEVICE#${deviceId}`,
+              deviceId,
+              createdAt: device!.createdAt || new Date(now).toISOString(),
+              lastSeenAt: new Date(now).toISOString(),
+            },
+          })
+        );
+        return jsonResponse(200, { trusted: true });
+      }
+
+      if (!email) {
+        return jsonResponse(400, { message: "Không xác định được email để gửi mã xác minh" });
+      }
+
+      const code = generateOtpCode();
+      const expiresAt = new Date(now + OTP_TTL_MS).toISOString();
+
+      // Cố ý: khoá theo user (không theo deviceId) -> mỗi user chỉ có 1 OTP đang chờ tại 1 thời
+      // điểm. Nếu 2 thiết bị lạ cùng kích hoạt gần nhau, mã của thiết bị trước sẽ bị ghi đè.
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `USER#${userId}`,
+            SK: "OTP",
+            code,
+            expiresAt,
+            attempts: 0,
+            ttl: Math.floor((now + OTP_TTL_MS) / 1000),
+          },
+        })
+      );
+
+      try {
+        await sendOtpEmail(email, code);
+      } catch (err) {
+        console.error("Failed to send device verification OTP email", err);
+        return jsonResponse(500, { message: "Không thể gửi mã xác minh, vui lòng thử lại." });
+      }
+
+      return jsonResponse(200, { trusted: false });
+    }
+
+    // -------------------------------------------------------------
+    // Route: /auth/device/verify (xác minh OTP, đánh dấu thiết bị tin cậy)
+    // -------------------------------------------------------------
+    if (resource === "/auth/device/verify" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+      }
+
+      // Bỏ qua xác minh thiết bị lạ cho Admin và Staff
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isAdminOrStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (isAdminOrStaff) {
+        return jsonResponse(200, { message: "Admin/Staff verified automatically" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { deviceId, code } = JSON.parse(event.body);
+      if (!deviceId || !code) {
+        return jsonResponse(400, { message: "Missing deviceId or code" });
+      }
+
+      const otpRes = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: "OTP",
+          },
+        })
+      );
+
+      const otp = otpRes.Item;
+      if (!otp || new Date(otp.expiresAt).getTime() < Date.now()) {
+        return jsonResponse(400, {
+          message: "Mã xác minh đã hết hạn hoặc không tồn tại. Vui lòng đăng nhập lại để nhận mã mới.",
+        });
+      }
+
+      const attempts = typeof otp.attempts === "number" ? otp.attempts : 0;
+      if (attempts >= MAX_OTP_ATTEMPTS) {
+        await dynamoDb.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: { PK: `USER#${userId}`, SK: "OTP" },
+          })
+        );
+        return jsonResponse(400, {
+          message: "Bạn đã nhập sai quá số lần cho phép. Vui lòng đăng nhập lại để nhận mã mới.",
+        });
+      }
+
+      if (otp.code !== code) {
+        await dynamoDb.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: { ...otp, attempts: attempts + 1 },
+          })
+        );
+        return jsonResponse(400, { message: "Mã xác minh không đúng." });
+      }
+
+      const nowIso = new Date().toISOString();
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `USER#${userId}`,
+            SK: `DEVICE#${deviceId}`,
+            deviceId,
+            createdAt: nowIso,
+            lastSeenAt: nowIso,
+          },
+        })
+      );
+
+      await dynamoDb.send(
+        new DeleteCommand({
+          TableName: tableName,
+          Key: {
+            PK: `USER#${userId}`,
+            SK: "OTP",
+          },
+        })
+      );
+
+      return jsonResponse(200, { trusted: true });
+    }
 
     // -------------------------------------------------------------
     // Route: /products/{id}/view
@@ -344,6 +856,59 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     // -------------------------------------------------------------
+    // Route: /products/{id}/image-upload-url (sinh presigned POST để admin upload ảnh sản phẩm)
+    // -------------------------------------------------------------
+    if (resource === "/products/{id}/image-upload-url" && method === "POST") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền tải ảnh sản phẩm" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+
+      const productId = getProductId(event.path, event.pathParameters?.id);
+      if (!productId) {
+        return jsonResponse(400, { message: "Missing product ID" });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "Định dạng ảnh không hợp lệ. Chỉ chấp nhận JPEG, PNG hoặc WEBP.",
+        });
+      }
+
+      const key = `products/${productId}/${randomUUID()}.${extension}`;
+
+      const { url, fields } = await createPresignedPost(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType],
+        ],
+        Fields: {
+          "Content-Type": fileType,
+        },
+        Expires: 60,
+      });
+
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES,
+      });
+    }
+
+    // -------------------------------------------------------------
     // Route: /products/{id}/comments
     // -------------------------------------------------------------
     if (resource === "/products/{id}/comments") {
@@ -446,6 +1011,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
               name: userName !== "User" ? userName : "",
               phone: "",
               address: "",
+              avatarUrl: "",
             },
           });
         }
@@ -461,26 +1027,95 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         const body = JSON.parse(event.body);
         const now = new Date().toISOString();
 
-        const updatedProfile = {
-          PK: `USER#${userId}`,
-          SK: "PROFILE",
+        // Đọc profile hiện có trước khi ghi đè, để một hành động chỉ đổi 1 field (vd. chỉ
+        // upload avatar) không xoá mất các field khác chưa gửi kèm trong body lần này.
+        const getRes = await dynamoDb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+            },
+          })
+        );
+        const existing = getRes.Item || {};
+
+        const updatedProfile: UserProfile = {
           userId,
-          email: email || body.email || "",
-          name: body.name || "",
-          phone: body.phone || "",
-          address: body.address || "",
+          email: email || body.email || existing.email || "",
+          name: body.name ?? existing.name ?? "",
+          phone: body.phone ?? existing.phone ?? "",
+          address: body.address ?? existing.address ?? "",
+          avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
+          // Bổ sung thông tin liên kết mạng xã hội
+          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
+          // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
+          // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
+          ...(existing.role ? { role: existing.role } : {}),
           updatedAt: now,
         };
 
         await dynamoDb.send(
           new PutCommand({
             TableName: tableName,
-            Item: updatedProfile,
+            Item: {
+              PK: `USER#${userId}`,
+              SK: "PROFILE",
+              ...updatedProfile,
+            },
           })
         );
 
-        return jsonResponse(200, { profile: stripTableKeys(updatedProfile) });
+        return jsonResponse(200, { profile: updatedProfile });
       }
+    }
+
+    // -------------------------------------------------------------
+    // Route: /users/profile/avatar-upload-url (sinh presigned POST để upload ảnh đại diện)
+    // -------------------------------------------------------------
+    if (resource === "/users/profile/avatar-upload-url" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+      }
+      if (!bucketName) {
+        return jsonResponse(500, { message: "BUCKET_NAME environment variable is not set" });
+      }
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const { fileType } = JSON.parse(event.body);
+      const extension = REVIEW_IMAGE_ALLOWED_TYPES[fileType];
+      if (!extension) {
+        return jsonResponse(400, {
+          message: "Định dạng ảnh không hợp lệ. Chỉ chấp nhận JPEG, PNG hoặc WEBP.",
+        });
+      }
+
+      const key = `users/${userId}/profile/${randomUUID()}.${extension}`;
+
+      const { url, fields } = await createPresignedPost(s3Client, {
+        Bucket: bucketName,
+        Key: key,
+        Conditions: [
+          ["content-length-range", 1, REVIEW_IMAGE_MAX_BYTES],
+          ["eq", "$Content-Type", fileType],
+        ],
+        Fields: {
+          "Content-Type": fileType,
+        },
+        Expires: 60,
+      });
+
+      return jsonResponse(200, {
+        uploadUrl: url,
+        fields,
+        publicUrl: `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+        maxSizeBytes: REVIEW_IMAGE_MAX_BYTES,
+      });
     }
 
     // -------------------------------------------------------------
@@ -585,7 +1220,50 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Status is required" });
       }
 
-      // Lấy thông tin đơn hàng hiện tại
+      const getResult = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA",
+          },
+        })
+      );
+
+      if (!getResult.Item) {
+        return jsonResponse(404, { message: "Order not found" });
+      }
+
+      const changedBy =
+        authorizer?.claims?.email ||
+        authorizer?.claims?.name ||
+        authorizer?.claims?.["cognito:username"] ||
+        "SYSTEM";
+
+      const updatedOrder = await applyOrderStatusUpdate(
+        targetOrderId,
+        getResult.Item,
+        status,
+        reason,
+        changedBy
+      );
+
+      return jsonResponse(200, stripTableKeys(updatedOrder));
+    }
+
+    // -------------------------------------------------------------
+    // Route: /orders/{id}/confirm-receipt (PUT - Khách hàng tự xác nhận đã nhận hàng)
+    // -------------------------------------------------------------
+    if (resource === "/orders/{id}/confirm-receipt" && method === "PUT") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+      }
+
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+
       const getResult = await dynamoDb.send(
         new GetCommand({
           TableName: tableName,
@@ -601,127 +1279,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
 
       const order = getResult.Item;
-      const now = new Date().toISOString();
+      if (order.userId !== userId) {
+        return jsonResponse(403, { message: "Forbidden: Đây không phải đơn hàng của bạn" });
+      }
 
-      // Cập nhật trạng thái đơn hàng
-      const updatedOrder = {
-        ...order,
-        status,
-        updatedAt: now,
-      };
+      if (order.status !== DELIVERED_STATUS) {
+        return jsonResponse(400, {
+          message: "Đơn hàng chưa ở trạng thái đã giao, không thể xác nhận nhận hàng",
+        });
+      }
 
-      await dynamoDb.send(
-        new PutCommand({
-          TableName: tableName,
-          Item: updatedOrder,
-        })
+      const changedBy = authorizer?.claims?.email || authorizer?.claims?.name || userId;
+      const updatedOrder = await applyOrderStatusUpdate(
+        targetOrderId,
+        order,
+        COMPLETED_STATUS,
+        "Khách hàng xác nhận đã nhận hàng",
+        changedBy
       );
-
-      // Ghi lại lịch sử thay đổi trạng thái đơn hàng (audit trail)
-      const changedBy =
-        authorizer?.claims?.email ||
-        authorizer?.claims?.name ||
-        authorizer?.claims?.["cognito:username"] ||
-        "SYSTEM";
-      try {
-        await dynamoDb.send(
-          new PutCommand({
-            TableName: tableName,
-            Item: {
-              PK: `ORDER#${targetOrderId}`,
-              SK: `STATUS_HISTORY#${now}`,
-              status,
-              changedBy,
-              reason: reason || "",
-              createdAt: now,
-            },
-          })
-        );
-      } catch (err) {
-        console.error(`Failed to write status history for order ${targetOrderId}`, err);
-      }
-
-      // Khi đơn hàng chuyển sang trạng thái "Đánh giá" (đã giao) lần đầu, cộng dồn soldCount cho từng sản phẩm
-      // và cấp quyền đánh giá (BOUGHT#) — đây là mốc duy nhất xác nhận khách đã thực sự nhận hàng.
-      if (status === "Đánh giá" && order.status !== "Đánh giá") {
-        const items = Array.isArray(order.items) ? order.items : [];
-        for (const item of items) {
-          if (!item?.productId || typeof item?.quantity !== "number") continue;
-          try {
-            await dynamoDb.send(
-              new UpdateCommand({
-                TableName: tableName,
-                Key: {
-                  PK: `PRODUCT#${item.productId}`,
-                  SK: "METADATA",
-                },
-                UpdateExpression: "ADD soldCount :qty",
-                ConditionExpression: "attribute_exists(PK)",
-                ExpressionAttributeValues: {
-                  ":qty": item.quantity,
-                },
-              })
-            );
-          } catch (err) {
-            console.error(`Failed to increment soldCount for product ${item.productId}`, err);
-          }
-
-          if (order.userId) {
-            try {
-              await dynamoDb.send(
-                new PutCommand({
-                  TableName: tableName,
-                  Item: {
-                    PK: `USER#${order.userId}`,
-                    SK: `BOUGHT#${item.productId}`,
-                    productId: item.productId,
-                    orderId: targetOrderId,
-                    purchasedAt: now,
-                  },
-                })
-              );
-            } catch (err) {
-              console.error(`Failed to grant review eligibility for product ${item.productId}`, err);
-            }
-          }
-        }
-      }
-
-      // Gửi sự kiện cập nhật trạng thái đơn hàng sang EventBridge để kích hoạt gửi Mail tự động
-      if (eventBusName) {
-        const isCancellation = status === "Đã hủy";
-        const detailType = isCancellation ? "OrderCancelled" : "OrderUpdated";
-        try {
-          console.log(`Publishing ${detailType} event for order ${targetOrderId} to ${eventBusName}...`);
-          await eventBridge.send(
-            new PutEventsCommand({
-              Entries: [
-                {
-                  EventBusName: eventBusName,
-                  Source: "com.musicstore.order",
-                  DetailType: detailType,
-                  Detail: JSON.stringify({
-                    eventId: randomUUID(),
-                    version: "1.0",
-                    orderId: targetOrderId,
-                    email: order.email,
-                    customer: order.customer,
-                    status: status,
-                    totalPrice: order.totalPrice,
-                    ...(isCancellation && {
-                      reason: reason || "",
-                      cancelledBy: changedBy,
-                      items: order.items,
-                    }),
-                  }),
-                },
-              ],
-            })
-          );
-        } catch (err) {
-          console.error(`Failed to publish ${detailType} event to EventBridge`, err);
-        }
-      }
 
       return jsonResponse(200, stripTableKeys(updatedOrder));
     }
@@ -863,6 +1438,120 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     // -------------------------------------------------------------
+    // Route: /coupons (GET - Admin/Staff liệt kê toàn bộ coupon)
+    // -------------------------------------------------------------
+    if (resource === "/coupons" && method === "GET") {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      const items: any[] = [];
+      let ExclusiveStartKey: Record<string, unknown> | undefined;
+
+      do {
+        const result = await dynamoDb.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(PK, :couponPrefix) AND SK = :metadataSk",
+            ExpressionAttributeValues: {
+              ":couponPrefix": "COUPON#",
+              ":metadataSk": "METADATA",
+            },
+            ExclusiveStartKey,
+          })
+        );
+
+        items.push(...(result.Items ?? []));
+        ExclusiveStartKey = result.LastEvaluatedKey;
+      } while (ExclusiveStartKey);
+
+      const coupons = items
+        .map((item) => stripTableKeys(item))
+        .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+      return jsonResponse(200, coupons);
+    }
+
+    // -------------------------------------------------------------
+    // Route: /coupons/{code} (PUT/DELETE - Admin/Staff sửa hoặc xóa coupon)
+    // -------------------------------------------------------------
+    if (resource === "/coupons/{code}" && (method === "PUT" || method === "DELETE")) {
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      if (!isStaff) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      const code = event.pathParameters?.code;
+      if (!code) {
+        return jsonResponse(400, { message: "Missing coupon code" });
+      }
+
+      if (method === "DELETE") {
+        await dynamoDb.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: { PK: `COUPON#${code}`, SK: "METADATA" },
+          })
+        );
+        return jsonResponse(200, { message: "Đã xóa mã giảm giá" });
+      }
+
+      if (!event.body) {
+        return jsonResponse(400, { message: "Missing request body" });
+      }
+
+      const getResult = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { PK: `COUPON#${code}`, SK: "METADATA" },
+        })
+      );
+
+      if (!getResult.Item) {
+        return jsonResponse(404, { message: "Mã giảm giá không tồn tại" });
+      }
+
+      const existing = getResult.Item;
+      const body = JSON.parse(event.body);
+      const {
+        discountType,
+        discountValue,
+        minOrderValue,
+        usageLimit,
+        validFrom,
+        validUntil,
+        isActive,
+      } = body;
+
+      if (discountType && discountType !== "percentage" && discountType !== "fixed") {
+        return jsonResponse(400, { message: "discountType phải là 'percentage' hoặc 'fixed'" });
+      }
+
+      const updatedCoupon = {
+        ...existing,
+        discountType: discountType ?? existing.discountType,
+        discountValue: typeof discountValue === "number" ? discountValue : existing.discountValue,
+        minOrderValue: typeof minOrderValue === "number" ? minOrderValue : existing.minOrderValue,
+        usageLimit: usageLimit === null || typeof usageLimit === "number" ? usageLimit : existing.usageLimit,
+        validFrom: validFrom ?? existing.validFrom,
+        validUntil: validUntil === null || validUntil ? validUntil : existing.validUntil,
+        isActive: typeof isActive === "boolean" ? isActive : existing.isActive,
+      };
+
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: updatedCoupon,
+        })
+      );
+
+      return jsonResponse(200, stripTableKeys(updatedCoupon));
+    }
+
+    // -------------------------------------------------------------
     // Route: /users & /users/{userId} (Admin/Staff User Management)
     // -------------------------------------------------------------
     if (resource === "/users" || resource === "/users/{userId}") {
@@ -892,7 +1581,85 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           ExclusiveStartKey = result.LastEvaluatedKey;
         } while (ExclusiveStartKey);
 
-        const profiles = items.map((item) => stripTableKeys(item));
+        // Quyền thật do Cognito Group quyết định, không phải field `role` lưu trong DynamoDB
+        // (field này có thể lệch nếu bị đổi tay hoặc tạo từ trước khi có cơ chế đồng bộ).
+        const [adminIds, staffIds, cognitoUsers] = await Promise.all([
+          listGroupUserIds("Admin"),
+          listGroupUserIds("Staff"),
+          listAllCognitoUsers(),
+        ]);
+
+        const cognitoUserMap = new Map<string, typeof cognitoUsers[0]>();
+        for (const u of cognitoUsers) {
+          cognitoUserMap.set(u.userId, u);
+        }
+
+        const profilesByUserId = new Map<string, UserProfile>();
+        for (const item of items) {
+          const profile = stripTableKeys(item) as UserProfile;
+          // Chỉ thêm vào danh sách hiển thị nếu tài khoản vẫn tồn tại thực tế trên Cognito
+          // (Loại bỏ các profile cũ của các user đã bị xóa trên Cognito)
+          if (cognitoUserMap.has(profile.userId)) {
+            profilesByUserId.set(profile.userId, profile);
+          } else {
+            console.log(`[Admin Users] Lọc bỏ profile mồ côi trong DynamoDB: userId=${profile.userId}, email=${profile.email}`);
+          }
+        }
+
+        // Bất kỳ user Cognito nào chưa có PROFILE trong DynamoDB (vd. backfill chưa chạy
+        // ở môi trường này) vẫn phải xuất hiện trong danh sách, thay vì biến mất hoàn toàn.
+        for (const cognitoUser of cognitoUsers) {
+          if (!profilesByUserId.has(cognitoUser.userId)) {
+            const fallbackProfile: Omit<UserProfile, "role"> = {
+              userId: cognitoUser.userId,
+              email: cognitoUser.email,
+              name: cognitoUser.name || cognitoUser.email.split("@")[0] || "User",
+              phone: "",
+              address: "",
+            };
+            profilesByUserId.set(cognitoUser.userId, fallbackProfile as UserProfile);
+          }
+        }
+
+        const profiles = Array.from(profilesByUserId.values()).map((profile) => {
+          profile.role = adminIds.has(profile.userId)
+            ? "Admin"
+            : staffIds.has(profile.userId)
+            ? "Staff"
+            : "User";
+
+          const cognitoUser = cognitoUserMap.get(profile.userId);
+          const username = cognitoUser?.username || "";
+          const identitiesStr = cognitoUser?.identitiesStr || "";
+
+          let provider = "Email";
+          if (identitiesStr) {
+            try {
+              const identities = JSON.parse(identitiesStr);
+              if (Array.isArray(identities) && identities.length > 0) {
+                const providerName = identities[0].providerName;
+                if (providerName) {
+                  // Chuẩn hóa tên provider (Google, Facebook)
+                  const normalized = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+                  provider = normalized === "Cognito" ? "Email" : normalized;
+                }
+              }
+            } catch (e) {
+              console.error("Failed to parse identities JSON", e);
+            }
+          }
+
+          if (provider === "Email" && username) {
+            if (username.toLowerCase().startsWith("google_") || username.toLowerCase().startsWith("google")) {
+              provider = "Google";
+            } else if (username.toLowerCase().startsWith("facebook_") || username.toLowerCase().startsWith("facebook")) {
+              provider = "Facebook";
+            }
+          }
+
+          (profile as any).provider = provider;
+          return profile;
+        });
         return jsonResponse(200, profiles);
       }
 
@@ -940,6 +1707,15 @@ export const handler: APIGatewayProxyHandler = async (event) => {
               Item: updatedProfile,
             })
           );
+
+          if (body.role) {
+            try {
+              await syncCognitoGroup(targetUserId, body.role);
+            } catch (error) {
+              // Không throw: DB đã ghi thành công, chỉ log để điều tra nếu Cognito group bị lệch
+              console.error("Failed to sync Cognito group for role change:", error);
+            }
+          }
 
           return jsonResponse(200, stripTableKeys(updatedProfile));
         }
@@ -1253,8 +2029,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Invalid request: Missing body" });
       }
 
-      const body = JSON.parse(event.body) as ProductItem;
-      const { id, name, brand, type, price, imageUrl, description } = body;
+      const body = JSON.parse(event.body) as any;
+      const { id, name, brand, type, price, imageUrl, description, stock } = body;
 
       if (!id || !name || !brand || typeof price !== "number" || !imageUrl || !description) {
         return jsonResponse(400, { message: "Missing required fields" });
@@ -1283,7 +2059,25 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         })
       );
 
-      return jsonResponse(201, stripTableKeys(newItem));
+      // Create INVENTORY record
+      const initialStock = typeof stock === "number" ? stock : 0;
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `PRODUCT#${id}`,
+            SK: "INVENTORY",
+            stock: initialStock,
+            reserved: 0,
+            updatedAt: now,
+          },
+        })
+      );
+
+      return jsonResponse(201, {
+        ...stripTableKeys(newItem),
+        stock: initialStock,
+      });
     }
 
     // 3. PUT request (Update Product)
@@ -1296,7 +2090,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Invalid request: Missing body" });
       }
 
-      const body = JSON.parse(event.body) as Partial<ProductItem>;
+      const body = JSON.parse(event.body) as any;
 
       // Get existing product to update
       const existing = await dynamoDb.send(
@@ -1350,7 +2144,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         })
       );
 
-      return jsonResponse(200, stripTableKeys(updatedItem));
+      // Update INVENTORY record if stock is provided
+      let finalStock = null;
+      if (body.stock !== undefined) {
+        const newStock = typeof body.stock === "number" ? body.stock : Number(body.stock);
+        if (Number.isInteger(newStock)) {
+          const currentInv = await dynamoDb.send(
+            new GetCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+              },
+            })
+          );
+          const currentReserved = currentInv.Item?.reserved || 0;
+          await dynamoDb.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+                stock: newStock,
+                reserved: currentReserved,
+                updatedAt: now,
+              },
+            })
+          );
+          finalStock = newStock;
+        }
+      }
+
+      return jsonResponse(200, {
+        ...stripTableKeys(updatedItem),
+        ...(finalStock !== null ? { stock: finalStock } : {}),
+      });
     }
 
     // 4. DELETE request (Delete Product)

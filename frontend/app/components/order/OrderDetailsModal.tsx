@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 import type { Order } from "../../../types/cart";
+import { formatOrderCode } from "../../lib/order";
 
 interface OrderDetailsModalProps {
   isOpen: boolean;
@@ -51,8 +52,12 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
   const formatPrice = (price: number) => price.toLocaleString("vi-VN") + " ₫";
 
   const formatDate = (isoString: string) => {
+    if (!isoString) return "Chưa cập nhật";
     try {
       const date = new Date(isoString);
+      if (isNaN(date.getTime())) {
+        return isoString || "Chưa cập nhật";
+      }
       return date.toLocaleDateString("vi-VN", {
         year: "numeric",
         month: "2-digit",
@@ -62,7 +67,7 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
         second: "2-digit",
       });
     } catch {
-      return isoString;
+      return isoString || "Chưa cập nhật";
     }
   };
 
@@ -79,7 +84,7 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
         <div className="flex justify-between items-center px-6 md:px-8 py-6 border-b border-gray-100 dark:border-primary-container/20 bg-[#F3EFEA] dark:bg-[#06261d] transition-colors duration-300">
           <div>
             <h3 className="font-serif text-lg font-bold text-[#002B1F] dark:text-[#80bea6]">Chi Tiết Đơn Hàng</h3>
-            <span className="text-xs font-mono text-slate-500 dark:text-emerald-100/50">ID: {order.id}</span>
+            <span className="text-xs font-mono text-slate-500 dark:text-emerald-100/50">Mã đơn: {formatOrderCode(order)}</span>
           </div>
           <button
             type="button"
@@ -174,7 +179,7 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
                 </thead>
                 <tbody>
                   {(order.products || []).map((item) => {
-                    const priceNum = parseFloat(String(item.price).replace(/,/g, ""));
+                    const priceNum = parseFloat(String(item.price).replace(/\D/g, "")) || 0;
                     const totalNum = priceNum * (item.quantity || 1);
                     return (
                       <tr key={item.id} className="border-b border-gray-100 dark:border-primary-container/10 transition-colors">

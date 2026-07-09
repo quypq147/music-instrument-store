@@ -6,6 +6,7 @@ import Link from "next/link";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { AdminSidebar } from "../components/admin/AdminSidebar";
 import MusicLoading from "../components/common/MusicLoading";
+import { Menu, X } from "lucide-react";
 
 export default function AdminLayout({
   children,
@@ -13,6 +14,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -111,9 +113,49 @@ export default function AdminLayout({
   }
 
   return (
-    <main className="min-h-screen bg-white flex">
-      <AdminSidebar />
-      <section className="flex-1 p-8 bg-[#FAFAF8]">{children}</section>
+    <main className="min-h-screen bg-white flex flex-col md:flex-row relative">
+      {/* Mobile Top Navbar with Hamburger */}
+      <div className="md:hidden w-full bg-[#001A12] text-white px-6 py-4 flex items-center justify-between z-30 border-b border-white/5">
+        <h3 className="font-serif text-base text-[#DF9E47]">Bảng Quản Trị</h3>
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 -mr-2 text-white/80 hover:text-white transition-colors cursor-pointer"
+          aria-label="Toggle Sidebar"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* Sidebar with mobile drawer mode */}
+      <div className={`
+        fixed inset-y-0 left-0 z-45 transform transition-transform duration-300 md:translate-x-0 md:relative md:flex md:w-64
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+      `}>
+        <div className="relative h-full flex flex-col w-full">
+          {/* Close button inside sidebar on mobile */}
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(false)}
+            className="md:hidden absolute top-4 right-4 z-50 p-2 text-white/60 hover:text-white bg-black/25 hover:bg-black/40 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close Sidebar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <AdminSidebar onClose={() => setIsSidebarOpen(false)} />
+        </div>
+      </div>
+
+      {/* Overlay on mobile */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-xs transition-opacity duration-300"
+        />
+      )}
+
+      {/* Main Content Area */}
+      <section className="flex-1 p-4 md:p-8 bg-[#FAFAF8] overflow-x-hidden">{children}</section>
     </main>
   );
 }
