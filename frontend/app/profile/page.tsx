@@ -15,6 +15,7 @@ import { OrderDetailsModal } from "../components/order/OrderDetailsModal";
 import type { Order } from "../../types/cart";
 import MusicLoading from "../components/common/MusicLoading";
 import { ImagePicker } from "../components/common/ImagePicker";
+import { slugify } from "../../lib/products";
 
 interface DbOrderItem {
   productId: string;
@@ -79,6 +80,13 @@ function ProfileContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<"profile" | "wishlist" | "orders" | "settings">("profile");
   const [selectedDetailOrder, setSelectedDetailOrder] = useState<Order | null>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ORDERS_PER_PAGE = 4;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   // Settings Tab States
   const [oldPassword, setOldPassword] = useState("");
@@ -369,7 +377,7 @@ function ProfileContent() {
 
   return (
     <main className="bg-surface-cream dark:bg-[#02140f] min-h-screen pt-28 pb-12 px-4 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row gap-8">
 
           {/* Sidebar */}
@@ -503,7 +511,7 @@ function ProfileContent() {
                         {wishlist.map((item) => (
                           <Link
                             key={item.productId}
-                            href={`/product/${item.productId}`}
+                            href={`/products/${slugify(item.name)}-${item.productId}`}
                             className="group flex flex-col justify-between bg-white dark:bg-[#031d16] border border-gray-100 dark:border-primary-container/20 rounded-2xl overflow-hidden hover:border-[#DF9E47]/30 dark:hover:border-secondary/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
                           >
                             <div className="p-4 flex-1">
@@ -558,16 +566,41 @@ function ProfileContent() {
                         </Link>
                       </div>
                     ) : (
-                      <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-                        {orders.map((order) => (
-                          <OrderCard
-                            key={order.id}
-                            order={order}
-                            showSummaryOnly={true}
-                            onViewDetails={() => setSelectedDetailOrder(order)}
-                          />
-                        ))}
-                      </div>
+                      <>
+                        <div className="space-y-6">
+                          {orders
+                            .slice((currentPage - 1) * ORDERS_PER_PAGE, currentPage * ORDERS_PER_PAGE)
+                            .map((order) => (
+                              <OrderCard
+                                key={order.id}
+                                order={order}
+                                showSummaryOnly={true}
+                                onViewDetails={() => setSelectedDetailOrder(order)}
+                              />
+                            ))}
+                        </div>
+                        {orders.length > ORDERS_PER_PAGE && (
+                          <div className="flex justify-center items-center gap-4 mt-8 pt-6 border-t border-slate-100 dark:border-primary-container/20">
+                            <button
+                              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                              disabled={currentPage === 1}
+                              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-primary-container/30 text-xs font-bold text-slate-600 dark:text-emerald-100/70 hover:bg-slate-50 dark:hover:bg-[#031d16] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                            >
+                              Trước
+                            </button>
+                            <span className="text-xs font-bold text-slate-500 dark:text-emerald-100/50">
+                              Trang {currentPage} / {Math.ceil(orders.length / ORDERS_PER_PAGE)}
+                            </span>
+                            <button
+                              onClick={() => setCurrentPage((p) => Math.min(Math.ceil(orders.length / ORDERS_PER_PAGE), p + 1))}
+                              disabled={currentPage === Math.ceil(orders.length / ORDERS_PER_PAGE)}
+                              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-primary-container/30 text-xs font-bold text-slate-600 dark:text-emerald-100/70 hover:bg-slate-50 dark:hover:bg-[#031d16] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                            >
+                              Sau
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (

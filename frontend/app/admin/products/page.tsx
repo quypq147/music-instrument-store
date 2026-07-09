@@ -29,6 +29,7 @@ export default function AdminProductsPage() {
     price: 0,
     imageUrl: "",
     description: "",
+    stock: 0,
   });
 
   const [authToken, setAuthToken] = useState("");
@@ -67,6 +68,7 @@ export default function AdminProductsPage() {
       price: 0,
       imageUrl: "",
       description: "",
+      stock: 0,
     });
     setIsModalOpen(true);
   };
@@ -81,6 +83,7 @@ export default function AdminProductsPage() {
       price: product.price,
       imageUrl: product.imageUrl,
       description: product.description,
+      stock: typeof product.stock === "number" ? product.stock : 0,
     });
     setIsModalOpen(true);
   };
@@ -117,7 +120,7 @@ export default function AdminProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.id || !formData.name || !formData.brand || !formData.imageUrl || !formData.description || formData.price <= 0) {
+    if (!formData.id || !formData.name || !formData.brand || !formData.imageUrl || !formData.description || formData.price <= 0 || formData.stock < 0) {
       showToast("Vui lòng nhập đầy đủ các thông tin hợp lệ!", "warning");
       return;
     }

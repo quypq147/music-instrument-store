@@ -52,8 +52,12 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
   const formatPrice = (price: number) => price.toLocaleString("vi-VN") + " ₫";
 
   const formatDate = (isoString: string) => {
+    if (!isoString) return "Chưa cập nhật";
     try {
       const date = new Date(isoString);
+      if (isNaN(date.getTime())) {
+        return isoString || "Chưa cập nhật";
+      }
       return date.toLocaleDateString("vi-VN", {
         year: "numeric",
         month: "2-digit",
@@ -63,7 +67,7 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
         second: "2-digit",
       });
     } catch {
-      return isoString;
+      return isoString || "Chưa cập nhật";
     }
   };
 
@@ -175,7 +179,7 @@ export function OrderDetailsModal({ isOpen, order, onClose }: OrderDetailsModalP
                 </thead>
                 <tbody>
                   {(order.products || []).map((item) => {
-                    const priceNum = parseFloat(String(item.price).replace(/,/g, ""));
+                    const priceNum = parseFloat(String(item.price).replace(/\D/g, "")) || 0;
                     const totalNum = priceNum * (item.quantity || 1);
                     return (
                       <tr key={item.id} className="border-b border-gray-100 dark:border-primary-container/10 transition-colors">

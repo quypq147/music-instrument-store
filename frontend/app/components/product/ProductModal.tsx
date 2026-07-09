@@ -13,6 +13,7 @@ interface ProductFormData {
   price: number;
   imageUrl: string;
   description: string;
+  stock: number;
 }
 
 interface ProductModalProps {
@@ -115,7 +116,7 @@ export function ProductModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="prod-brand" className={labelClasses}>Thương hiệu</label>
               <input
@@ -144,6 +145,9 @@ export function ProductModal({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="prod-price" className={labelClasses}>Giá bán (VND)</label>
               <input
@@ -153,6 +157,19 @@ export function ProductModal({
                 onChange={(e) => onChangeField("price", Number(e.target.value))}
                 disabled={isSubmitting}
                 placeholder="Ví dụ: 35000000"
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label htmlFor="prod-stock" className={labelClasses}>Số lượng tồn kho</label>
+              <input
+                id="prod-stock"
+                type="number"
+                min="0"
+                value={formData.stock}
+                onChange={(e) => onChangeField("stock", Number(e.target.value))}
+                disabled={isSubmitting}
+                placeholder="Ví dụ: 10"
                 className={inputClasses}
               />
             </div>

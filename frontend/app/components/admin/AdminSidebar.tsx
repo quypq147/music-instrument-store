@@ -6,7 +6,7 @@ import { signOut, fetchAuthSession } from "aws-amplify/auth";
 
 import { useState, useEffect } from "react";
 
-export function AdminSidebar() {
+export function AdminSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -66,6 +66,7 @@ export function AdminSidebar() {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onClose}
             className={`text-left text-sm font-semibold px-4 py-3 rounded-xl transition-colors ${
               isActive(item.href, item.exact)
                 ? "bg-[#DF9E47] text-[#002B1F]"

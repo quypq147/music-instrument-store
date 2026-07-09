@@ -25,7 +25,7 @@ export default function ClientHeader() {
     {
       href: "/products",
       label: "SẢN PHẨM",
-      isActive: pathname === "/products" || pathname.startsWith("/product/"),
+      isActive: pathname.startsWith("/products"),
     },
     { href: "/lien-he", label: "LIÊN HỆ", isActive: pathname === "/lien-he" },
   ];

@@ -96,7 +96,7 @@ export function ImagePicker({
   return (
     <div className="flex flex-col items-center gap-3">
       <div
-        className={`w-24 h-24 ${shapeClass} overflow-hidden bg-[#F3EFEA] border border-[#DF9E47]/20 flex items-center justify-center shrink-0`}
+        className={`w-24 h-24 ${shapeClass} overflow-hidden bg-[#F3EFEA] dark:bg-[#031d16] border border-[#DF9E47]/20 flex items-center justify-center shrink-0`}
       >
         {previewUrl ? (
           <Image
@@ -108,7 +108,7 @@ export function ImagePicker({
             unoptimized
           />
         ) : (
-          <span className="text-xs text-slate-400">Chưa có ảnh</span>
+          <span className="text-xs text-slate-400 dark:text-emerald-100/30">Chưa có ảnh</span>
         )}
       </div>
       <input
@@ -122,7 +122,7 @@ export function ImagePicker({
       />
       <label
         htmlFor={inputId}
-        className={`cursor-pointer text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-xl border border-[#002B1F] text-[#002B1F] hover:bg-[#002B1F] hover:text-white transition-colors ${
+        className={`cursor-pointer text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-xl border border-[#002B1F] dark:border-[#DF9E47]/40 text-[#002B1F] dark:text-[#DF9E47] hover:bg-[#002B1F] dark:hover:bg-[#DF9E47] hover:text-white dark:hover:text-[#002B1F] transition-colors ${
           disabled || isUploading ? "opacity-60 pointer-events-none" : ""
         }`}
       >

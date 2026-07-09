@@ -162,7 +162,7 @@ var jsonResponse = (statusCode, body) => ({
 });
 var stripTableKeys = (item) => {
   if (!item) return item;
-  const { PK, SK, pk, sk, createdAt, updatedAt, GSI2PK, GSI2SK, ...rest } = item;
+  const { PK, SK, pk, sk, GSI2PK, GSI2SK, ...rest } = item;
   return rest;
 };
 var getProductId = (path, pathId) => {
@@ -181,6 +181,30 @@ var applyOrderStatusUpdate = async (targetOrderId, order, status, reason, change
     status,
     updatedAt: now
   };
+  const isActivating = (order.status === "PENDING" || order.status === "Ch\u1ED3 x\xE1c nh\u1EADn") && (status === "Ch\u1ED3 l\u1EA5y \u0111\u01A1n" || status === "\u0110ang giao h\xE0ng");
+  const isOnlinePayment = order.paymentMethod === "VNPay" || order.paymentMethod === "Momo" || order.paymentMethod === "Stripe";
+  if (isActivating && isOnlinePayment && Array.isArray(order.items)) {
+    for (const item of order.items) {
+      const productId = String(item.productId);
+      const qty = Number(item.quantity || 1);
+      try {
+        await dynamoDb.send(
+          new import_lib_dynamodb.UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY"
+            },
+            UpdateExpression: "SET reserved = reserved - :qty",
+            ExpressionAttributeValues: { ":qty": qty }
+          })
+        );
+        console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
+      } catch (reserveErr) {
+        console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+      }
+    }
+  }
   await dynamoDb.send(
     new import_lib_dynamodb.PutCommand({
       TableName: tableName,
@@ -1536,7 +1560,7 @@ var handler = async (event) => {
         return jsonResponse(400, { message: "Invalid request: Missing body" });
       }
       const body = JSON.parse(event.body);
-      const { id, name, brand, type, price, imageUrl, description } = body;
+      const { id, name, brand, type, price, imageUrl, description, stock } = body;
       if (!id || !name || !brand || typeof price !== "number" || !imageUrl || !description) {
         return jsonResponse(400, { message: "Missing required fields" });
       }
@@ -1561,7 +1585,23 @@ var handler = async (event) => {
           Item: newItem
         })
       );
-      return jsonResponse(201, stripTableKeys(newItem));
+      const initialStock = typeof stock === "number" ? stock : 0;
+      await dynamoDb.send(
+        new import_lib_dynamodb.PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `PRODUCT#${id}`,
+            SK: "INVENTORY",
+            stock: initialStock,
+            reserved: 0,
+            updatedAt: now
+          }
+        })
+      );
+      return jsonResponse(201, {
+        ...stripTableKeys(newItem),
+        stock: initialStock
+      });
     }
     if (method === "PUT") {
       if (!productId) {
@@ -1615,7 +1655,39 @@ var handler = async (event) => {
           Item: updatedItem
         })
       );
-      return jsonResponse(200, stripTableKeys(updatedItem));
+      let finalStock = null;
+      if (body.stock !== void 0) {
+        const newStock = typeof body.stock === "number" ? body.stock : Number(body.stock);
+        if (Number.isInteger(newStock)) {
+          const currentInv = await dynamoDb.send(
+            new import_lib_dynamodb.GetCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY"
+              }
+            })
+          );
+          const currentReserved = currentInv.Item?.reserved || 0;
+          await dynamoDb.send(
+            new import_lib_dynamodb.PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+                stock: newStock,
+                reserved: currentReserved,
+                updatedAt: now
+              }
+            })
+          );
+          finalStock = newStock;
+        }
+      }
+      return jsonResponse(200, {
+        ...stripTableKeys(updatedItem),
+        ...finalStock !== null ? { stock: finalStock } : {}
+      });
     }
     if (method === "DELETE") {
       if (!productId) {

@@ -381,9 +381,9 @@ export default function ChatWidget() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-55 font-sans">
+    <div className={`fixed ${isOpen ? "max-sm:inset-0 max-sm:z-55" : "bottom-6 right-6"} sm:bottom-6 sm:right-6 z-55 font-sans`}>
       {isOpen ? (
-        <div className="w-[360px] sm:w-[380px] h-[520px] bg-white dark:bg-[#06261d] rounded-2xl border border-slate-100 dark:border-primary-container/20 shadow-[0_12px_40px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden transition-all duration-300 transform scale-100 origin-bottom-right">
+        <div className="w-full h-full sm:w-[380px] sm:h-[520px] bg-white dark:bg-[#06261d] sm:rounded-2xl border border-slate-100 dark:border-primary-container/20 shadow-[0_12px_40px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden transition-all duration-300 transform scale-100 origin-bottom-right">
           
           {/* Header */}
           <div className="px-5 py-4 bg-gradient-to-r from-[#003527] to-[#064e3b] dark:from-[#002117] dark:to-[#031d16] text-white flex justify-between items-center shadow-sm">

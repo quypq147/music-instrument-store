@@ -8,11 +8,13 @@ type ProductDetailPageProps = {
   params: Promise<{
     id: string;
   }>;
-  
 };
 
 export default async function ProductDetailPage({ params }: ProductDetailPageProps) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  
+  // Extract ID from the end of a slug-id parameter (e.g. yamaha-yas-480-24 -> 24)
+  const id = rawId.includes("-") ? rawId.split("-").pop() || rawId : rawId;
   const { product, error } = await getProduct(id);
 
   if (!product && error === "Product not found.") {

@@ -218,7 +218,7 @@ const jsonResponse = (
 
 const stripTableKeys = (item: any) => {
   if (!item) return item;
-  const { PK, SK, pk, sk, createdAt, updatedAt, GSI2PK, GSI2SK, ...rest } = item;
+  const { PK, SK, pk, sk, GSI2PK, GSI2SK, ...rest } = item;
   return rest;
 };
 
@@ -250,6 +250,34 @@ const applyOrderStatusUpdate = async (
     status,
     updatedAt: now,
   };
+
+  // RELEASE RESERVED INVENTORY FOR ONLINE ORDERS WHEN ACTIVATING FROM PENDING
+  const isActivating = (order.status === "PENDING" || order.status === "Chờ xác nhận") &&
+                        (status === "Chờ lấy đơn" || status === "Đang giao hàng");
+  const isOnlinePayment = order.paymentMethod === "VNPay" || order.paymentMethod === "Momo" || order.paymentMethod === "Stripe";
+
+  if (isActivating && isOnlinePayment && Array.isArray(order.items)) {
+    for (const item of order.items) {
+      const productId = String(item.productId);
+      const qty = Number(item.quantity || 1);
+      try {
+        await dynamoDb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY",
+            },
+            UpdateExpression: "SET reserved = reserved - :qty",
+            ExpressionAttributeValues: { ":qty": qty },
+          })
+        );
+        console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
+      } catch (reserveErr) {
+        console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+      }
+    }
+  }
 
   await dynamoDb.send(
     new PutCommand({
@@ -1918,8 +1946,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Invalid request: Missing body" });
       }
 
-      const body = JSON.parse(event.body) as ProductItem;
-      const { id, name, brand, type, price, imageUrl, description } = body;
+      const body = JSON.parse(event.body) as any;
+      const { id, name, brand, type, price, imageUrl, description, stock } = body;
 
       if (!id || !name || !brand || typeof price !== "number" || !imageUrl || !description) {
         return jsonResponse(400, { message: "Missing required fields" });
@@ -1948,7 +1976,25 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         })
       );
 
-      return jsonResponse(201, stripTableKeys(newItem));
+      // Create INVENTORY record
+      const initialStock = typeof stock === "number" ? stock : 0;
+      await dynamoDb.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `PRODUCT#${id}`,
+            SK: "INVENTORY",
+            stock: initialStock,
+            reserved: 0,
+            updatedAt: now,
+          },
+        })
+      );
+
+      return jsonResponse(201, {
+        ...stripTableKeys(newItem),
+        stock: initialStock,
+      });
     }
 
     // 3. PUT request (Update Product)
@@ -1961,7 +2007,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Invalid request: Missing body" });
       }
 
-      const body = JSON.parse(event.body) as Partial<ProductItem>;
+      const body = JSON.parse(event.body) as any;
 
       // Get existing product to update
       const existing = await dynamoDb.send(
@@ -2015,7 +2061,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         })
       );
 
-      return jsonResponse(200, stripTableKeys(updatedItem));
+      // Update INVENTORY record if stock is provided
+      let finalStock = null;
+      if (body.stock !== undefined) {
+        const newStock = typeof body.stock === "number" ? body.stock : Number(body.stock);
+        if (Number.isInteger(newStock)) {
+          const currentInv = await dynamoDb.send(
+            new GetCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+              },
+            })
+          );
+          const currentReserved = currentInv.Item?.reserved || 0;
+          await dynamoDb.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+                stock: newStock,
+                reserved: currentReserved,
+                updatedAt: now,
+              },
+            })
+          );
+          finalStock = newStock;
+        }
+      }
+
+      return jsonResponse(200, {
+        ...stripTableKeys(updatedItem),
+        ...(finalStock !== null ? { stock: finalStock } : {}),
+      });
     }
 
     // 4. DELETE request (Delete Product)
