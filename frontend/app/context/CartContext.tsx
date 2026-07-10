@@ -14,12 +14,13 @@ interface CartItem {
   price: string;
   image: string;
   quantity?: number;
+  stock?: number | null;
 }
 
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: CartItem) => void;
-  increaseQuantity: (id: number) => void;
+  addToCart: (product: CartItem) => boolean;
+  increaseQuantity: (id: number) => boolean;
   decreaseQuantity: (id: number) => void;
   removeItem: (id: number) => void;
   totalItems: number;
@@ -71,18 +72,26 @@ export function CartProvider({
   }, [cart, isLoaded]);
 
   const addToCart = (product: CartItem) => {
+    const existing = cart.find((item) => item.id === product.id);
+    const stock = existing ? (existing.stock ?? product.stock) : product.stock;
+    const currentQty = existing?.quantity || 1;
+    if (typeof stock === "number" && currentQty >= stock) {
+      return false;
+    }
+
     setCart((currentCart) => {
-      const existing = currentCart.find(
+      const existingInner = currentCart.find(
         (item) => item.id === product.id
       );
 
-      if (existing) {
+      if (existingInner) {
         return currentCart.map((item) =>
           item.id === product.id
             ? {
                 ...item,
                 quantity:
                   (item.quantity || 1) + 1,
+                stock: product.stock ?? item.stock,
               }
             : item
         );
@@ -96,9 +105,16 @@ export function CartProvider({
         },
       ];
     });
+    return true;
   };
 
   const increaseQuantity = (id: number) => {
+    const existing = cart.find((item) => item.id === id);
+    const currentQty = existing?.quantity || 1;
+    if (existing && typeof existing.stock === "number" && currentQty >= existing.stock) {
+      return false;
+    }
+
     setCart((currentCart) =>
       currentCart.map((item) =>
         item.id === id
@@ -109,6 +125,7 @@ export function CartProvider({
           : item
       )
     );
+    return true;
   };
 
   const decreaseQuantity = (id: number) => {

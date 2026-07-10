@@ -35,15 +35,20 @@ export function ProductCard({ product }: ProductCardProps) {
 
     if (isOutOfStock) return;
 
-    addToCart({
+    const added = addToCart({
       id: Number(product.id),
       name: product.name,
       price: currencyFormatter.format(product.price),
       image: product.imageUrl,
       quantity: 1,
+      stock: product.stock,
     });
 
-    showToast(`Đã thêm ${product.name} vào giỏ hàng!`, "success");
+    if (added) {
+      showToast(`Đã thêm ${product.name} vào giỏ hàng!`, "success");
+    } else {
+      showToast("Số lượng trong giỏ đã đạt tối đa số lượng tồn kho.", "warning");
+    }
   };
 
   const handleWishlist = (e: React.MouseEvent) => {

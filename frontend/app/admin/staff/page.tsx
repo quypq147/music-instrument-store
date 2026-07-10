@@ -9,6 +9,7 @@ import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
 import MusicLoading from "../../components/common/MusicLoading";
 import Link from "next/link";
+import { listAdminUsers, updateAdminUser, deleteAdminUser } from "../../../lib/api/adminUsers";
 
 export default function AdminStaffPage() {
   const { showToast } = useToast();
@@ -33,15 +34,10 @@ export default function AdminStaffPage() {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch("/api/admin/users", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const result = await listAdminUsers(token);
+      if (result.ok) {
         // Filter: Only include Admin and Staff members
-        const staffOnly = (data || []).filter(
+        const staffOnly = (result.data || []).filter(
           (u: AdminUser) => {
             const role = u.role?.toLowerCase();
             return role === "admin" || role === "staff";
@@ -92,16 +88,9 @@ export default function AdminStaffPage() {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch(`/api/admin/users/${selectedUser.userId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(userFormData),
-      });
+      const result = await updateAdminUser(token, selectedUser.userId, userFormData);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Cập nhật vai trò nhân sự thành công!", "success");
         setIsUserModalOpen(false);
         fetchUsers();
@@ -128,14 +117,9 @@ export default function AdminStaffPage() {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch(`/api/admin/users/${userId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const result = await deleteAdminUser(token, userId);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Xóa hồ sơ nhân sự thành công!", "success");
         await fetchUsers();
       } else {

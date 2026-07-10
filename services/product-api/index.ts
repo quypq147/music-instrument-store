@@ -13,6 +13,9 @@ import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import AWSXRay from "aws-xray-sdk-core";
+
+AWSXRay.setContextMissingStrategy("LOG_ERROR");
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
@@ -32,6 +35,7 @@ type ProductItem = {
   type?: string;
   price: number;
   imageUrl: string;
+  images?: string[];
   description: string;
   createdAt?: string;
   updatedAt?: string;
@@ -45,13 +49,23 @@ type ProductItem = {
   stock?: number;
 };
 
-const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const dynamoDb = DynamoDBDocumentClient.from(
+  process.env._X_AMZN_TRACE_ID
+    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+    : new DynamoDBClient({})
+);
 const tableName = process.env.TABLE_NAME;
-const eventBridge = new EventBridgeClient({});
+const eventBridge = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new EventBridgeClient({}))
+  : new EventBridgeClient({});
 const eventBusName = process.env.EVENT_BUS_NAME;
-const s3Client = new S3Client({});
+const s3Client = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new S3Client({}))
+  : new S3Client({});
 const bucketName = process.env.BUCKET_NAME;
-const cognitoClient = new CognitoIdentityProviderClient({});
+const cognitoClient = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new CognitoIdentityProviderClient({}))
+  : new CognitoIdentityProviderClient({});
 const userPoolId = process.env.USER_POOL_ID;
 
 // Lấy toàn bộ userId (sub) đang là thành viên của 1 Cognito Group, dùng để hiển thị
@@ -158,7 +172,9 @@ const REVIEW_IMAGE_ALLOWED_TYPES: Record<string, string> = {
 const REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5MB/ảnh
 const REVIEW_IMAGE_MAX_COUNT = 3; // tối đa 3 ảnh/đánh giá
 
-const lambdaClient = new LambdaClient({});
+const lambdaClient = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new LambdaClient({}))
+  : new LambdaClient({});
 const notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
 
 // Ngưỡng "thiết bị quen": trùng bậc với thời hạn refresh token mặc định của Cognito (30 ngày) —
@@ -1931,6 +1947,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(200, {
           product: {
             ...product,
+            images: product.images && product.images.length > 0 ? product.images : [product.imageUrl],
             averageRating: product.averageRating ?? 0,
             ratingCount: product.ratingCount ?? 0,
             viewCount: product.viewCount ?? 0,
@@ -2009,6 +2026,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           const stock = stockByProductId.get(String(stripped.id));
           return {
             ...stripped,
+            images: stripped.images && stripped.images.length > 0 ? stripped.images : [stripped.imageUrl],
             averageRating: stripped.averageRating ?? 0,
             ratingCount: stripped.ratingCount ?? 0,
             viewCount: stripped.viewCount ?? 0,
@@ -2031,6 +2049,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
       const body = JSON.parse(event.body) as any;
       const { id, name, brand, type, price, imageUrl, description, stock } = body;
+      const images: string[] = Array.isArray(body.images) && body.images.length > 0
+        ? body.images.filter((url: unknown) => typeof url === "string" && url.trim().length > 0)
+        : imageUrl
+          ? [imageUrl]
+          : [];
 
       if (!id || !name || !brand || typeof price !== "number" || !imageUrl || !description) {
         return jsonResponse(400, { message: "Missing required fields" });
@@ -2045,7 +2068,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         brand,
         type,
         price,
-        imageUrl,
+        imageUrl: images[0] || imageUrl,
+        images,
         description,
         createdAt: now,
         updatedAt: now,
@@ -2115,6 +2139,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         "type",
         "price",
         "imageUrl",
+        "images",
         "description",
       ];
       const sanitizedBody: Partial<ProductItem> = {};
@@ -2122,6 +2147,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         if (body[field] !== undefined) {
           (sanitizedBody as any)[field] = body[field];
         }
+      }
+      if (Array.isArray(sanitizedBody.images) && sanitizedBody.images.length > 0) {
+        sanitizedBody.imageUrl = sanitizedBody.images[0];
       }
 
       const now = new Date().toISOString();
@@ -2187,15 +2215,26 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         return jsonResponse(400, { message: "Missing product ID in path" });
       }
 
-      await dynamoDb.send(
-        new DeleteCommand({
-          TableName: tableName,
-          Key: {
-            PK: `PRODUCT#${productId}`,
-            SK: "METADATA",
-          },
-        })
-      );
+      await Promise.all([
+        dynamoDb.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "METADATA",
+            },
+          })
+        ),
+        dynamoDb.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: {
+              PK: `PRODUCT#${productId}`,
+              SK: "INVENTORY",
+            },
+          })
+        ),
+      ]);
 
       return jsonResponse(200, { message: "Product deleted successfully" });
     }
