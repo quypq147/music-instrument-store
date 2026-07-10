@@ -98,6 +98,18 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   // Related Products State
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
 
+  // Gallery State
+  const galleryImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
+  const [activeImage, setActiveImage] = useState(galleryImages[0]);
+  const [syncedProductId, setSyncedProductId] = useState(product.id);
+
+  // Component này có thể được tái sử dụng giữa các lượt điều hướng sang sản phẩm khác
+  // (xem useEffect fetch theo product.id bên dưới) — đồng bộ lại ảnh chính khi đổi sản phẩm.
+  if (product.id !== syncedProductId) {
+    setSyncedProductId(product.id);
+    setActiveImage(galleryImages[0]);
+  }
+
   // Sinh/dọn preview cho ảnh đính kèm đánh giá đã chọn (chưa upload)
   useEffect(() => {
     const urls = ratingImages.map((file) => URL.createObjectURL(file));
@@ -202,15 +214,20 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const handleAddToCart = () => {
     if (isOutOfStock) return;
 
-    addToCart({
+    const added = addToCart({
       id: Number(product.id),
       name: product.name,
       price: currencyFormatter.format(product.price),
       image: product.imageUrl,
       quantity: 1,
+      stock: product.stock,
     });
 
-    showToast(`Đã thêm ${product.name} vào giỏ hàng!`, "success");
+    if (added) {
+      showToast(`Đã thêm ${product.name} vào giỏ hàng!`, "success");
+    } else {
+      showToast("Số lượng trong giỏ đã đạt tối đa số lượng tồn kho.", "warning");
+    }
   };
 
   const handleToggleWishlist = async () => {
@@ -426,16 +443,37 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         <h1 className="text-3xl font-serif text-primary mb-6">{product.name}</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          <div className="flex justify-center items-center bg-[#F3EFEA] dark:bg-[#031d16] rounded-xl p-6 border border-slate-100 dark:border-primary-container/20">
-            <div className="relative w-full aspect-square max-w-120">
-              <Image
-                src={product.imageUrl}
-                alt={product.name}
-                fill
-                className="object-contain"
-                priority
-              />
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-center items-center bg-[#F3EFEA] dark:bg-[#031d16] rounded-xl p-6 border border-slate-100 dark:border-primary-container/20">
+              <div className="relative w-full aspect-square max-w-120">
+                <Image
+                  src={activeImage}
+                  alt={product.name}
+                  fill
+                  className="object-contain"
+                  priority
+                />
+              </div>
             </div>
+
+            {galleryImages.length > 1 && (
+              <div className="flex gap-3 flex-wrap">
+                {galleryImages.map((src, index) => (
+                  <button
+                    key={`${src}-${index}`}
+                    type="button"
+                    onClick={() => setActiveImage(src)}
+                    className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 shrink-0 transition-colors ${
+                      activeImage === src
+                        ? "border-[#DF9E47]"
+                        : "border-transparent hover:border-slate-200 dark:hover:border-primary-container/30"
+                    }`}
+                  >
+                    <Image src={src} alt={`${product.name} - ảnh ${index + 1}`} fill className="object-contain p-1 bg-[#F3EFEA] dark:bg-[#031d16]" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col justify-between">

@@ -22,13 +22,20 @@ export default function AdminProductsPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    id: string;
+    name: string;
+    brand: string;
+    type: string;
+    price: number;
+    description: string;
+    stock: number | null;
+  }>({
     id: "",
     name: "",
     brand: "",
     type: "Alto Saxophone",
     price: 0,
-    imageUrl: "",
     description: "",
     stock: 0,
   });
@@ -66,7 +73,6 @@ export default function AdminProductsPage() {
       brand: "",
       type: "Alto Saxophone",
       price: 0,
-      imageUrl: "",
       description: "",
       stock: 0,
     });
@@ -81,9 +87,8 @@ export default function AdminProductsPage() {
       brand: product.brand,
       type: product.type || "Alto Saxophone",
       price: product.price,
-      imageUrl: product.imageUrl,
       description: product.description,
-      stock: typeof product.stock === "number" ? product.stock : 0,
+      stock: typeof product.stock === "number" ? product.stock : null,
     });
     setIsModalOpen(true);
   };
@@ -112,10 +117,10 @@ export default function AdminProductsPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, images: string[]) => {
     e.preventDefault();
 
-    if (!formData.id || !formData.name || !formData.brand || !formData.imageUrl || !formData.description || formData.price <= 0 || formData.stock < 0) {
+    if (!formData.id || !formData.name || !formData.brand || !formData.description || formData.price <= 0 || (formData.stock ?? 0) < 0) {
       showToast("Vui lòng nhập đầy đủ các thông tin hợp lệ!", "warning");
       return;
     }
@@ -125,7 +130,12 @@ export default function AdminProductsPage() {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
 
-      const result = await saveProduct(token, editProduct?.id ?? formData.id, !!editProduct, formData);
+      const result = await saveProduct(token, editProduct?.id ?? formData.id, !!editProduct, {
+        ...formData,
+        imageUrl: images[0],
+        images,
+        ...(formData.stock === null ? { stock: undefined } : {}),
+      });
 
       if (!result.ok) throw new Error("Failed to save product");
 
@@ -141,7 +151,7 @@ export default function AdminProductsPage() {
     }
   };
 
-  const handleFormDataChange = (field: keyof typeof formData, value: string | number) => {
+  const handleFormDataChange = (field: keyof typeof formData, value: string | number | null) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,

@@ -102,7 +102,10 @@ export default function Cart() {
   const handleIncrease = (index: number) => {
     const item = cart[index];
     if (item) {
-      increaseQuantity(item.id);
+      const increased = increaseQuantity(item.id);
+      if (!increased) {
+        showToast("Số lượng trong giỏ đã đạt tối đa số lượng tồn kho.", "warning");
+      }
     }
   };
 

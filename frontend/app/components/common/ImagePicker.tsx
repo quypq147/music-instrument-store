@@ -2,9 +2,11 @@
 
 import { useId, useRef, useState } from "react";
 import Image from "next/image";
-
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+import {
+  uploadImageFile,
+  DEFAULT_ALLOWED_IMAGE_TYPES as ALLOWED_TYPES,
+  DEFAULT_MAX_IMAGE_SIZE_BYTES as MAX_SIZE_BYTES,
+} from "../../../lib/uploadImageFile";
 
 interface ImagePickerProps {
   currentImageUrl: string;
@@ -58,28 +60,7 @@ export function ImagePicker({
     setIsUploading(true);
 
     try {
-      const presignRes = await fetch(uploadUrlEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ fileType: file.type }),
-      });
-      const presignData = await presignRes.json();
-      if (!presignRes.ok) {
-        throw new Error(presignData.error || presignData.message || "Không thể tạo link tải ảnh lên");
-      }
-
-      const { uploadUrl, fields, publicUrl } = presignData;
-      const formData = new FormData();
-      Object.entries(fields as Record<string, string>).forEach(([key, value]) => {
-        formData.append(key, value);
-      });
-      formData.append("file", file);
-
-      const uploadRes = await fetch(uploadUrl, { method: "POST", body: formData });
-      if (!uploadRes.ok) {
-        throw new Error("Tải ảnh lên thất bại");
-      }
-
+      const publicUrl = await uploadImageFile(file, uploadUrlEndpoint, authToken);
       setPreviewUrl(publicUrl);
       onUploaded(publicUrl);
     } catch (err) {
