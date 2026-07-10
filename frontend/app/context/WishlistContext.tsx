@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { getCurrentUser, fetchAuthSession } from "aws-amplify/auth";
 import { useToast } from "./ToastContext";
+import { getWishlist, addToWishlist, removeFromWishlist } from "../../lib/api/wishlist";
 
 interface WishlistContextType {
   isWishlisted: (productId: string | number) => boolean;
@@ -31,12 +32,9 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch("/api/users/wishlist", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = (await res.json()) as { productId: string | number }[];
-        setWishlistIds(new Set(data.map((item) => String(item.productId))));
+      const result = await getWishlist(token);
+      if (result.ok) {
+        setWishlistIds(new Set(result.data.map((item) => String(item.productId))));
       }
     } catch (err) {
       console.error("Failed to fetch wishlist:", err);
@@ -73,11 +71,8 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
       if (!token) throw new Error("No token found");
 
       if (currentlyWishlisted) {
-        const res = await fetch(`/api/users/wishlist/${productId}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
+        const result = await removeFromWishlist(token, productId);
+        if (result.ok) {
           setWishlistIds((prev) => {
             const next = new Set(prev);
             next.delete(productId);
@@ -88,12 +83,8 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
           showToast("Lỗi khi xóa khỏi danh sách yêu thích.", "error");
         }
       } else {
-        const res = await fetch("/api/users/wishlist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ productId }),
-        });
-        if (res.ok) {
+        const result = await addToWishlist(token, productId);
+        if (result.ok) {
           setWishlistIds((prev) => new Set(prev).add(productId));
           showToast(`Đã thêm ${product.name} vào danh sách yêu thích!`, "success");
         } else {

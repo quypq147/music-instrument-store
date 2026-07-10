@@ -10,6 +10,12 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { useToast } from "../../context/ToastContext";
 import MusicLoading from "../../components/common/MusicLoading";
+import {
+  initCheckoutPayment,
+  notifyStripeWebhook,
+  notifyMomoWebhook,
+  type CheckoutInitResult,
+} from "../../../lib/api/checkout";
 
 // Initialize Stripe Promise
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
@@ -155,32 +161,26 @@ function CheckoutContent() {
   useEffect(() => {
     if (paymentMethod === "Momo" && orderId) {
       setIsMomoLoading(true);
-      fetch("/api/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      initCheckoutPayment({
+        customer: {
+          name: "Khách Hàng Test",
+          phone: "0912345678",
+          address: "Địa chỉ Test",
+          note: "Test thanh toán Momo",
         },
-        body: JSON.stringify({
-          customer: {
-            name: "Khách Hàng Test",
-            phone: "0912345678",
-            address: "Địa chỉ Test",
-            note: "Test thanh toán Momo",
-          },
-          paymentMethod: "Momo",
-          idempotencyKey: `idemp_${orderId}`,
-          items: [
-            {
-              productId: "1",
-              name: `Thanh toán đơn hàng ${orderId}`,
-              price: amount,
-              quantity: 1,
-            }
-          ]
-        })
+        paymentMethod: "Momo",
+        idempotencyKey: `idemp_${orderId}`,
+        items: [
+          {
+            productId: "1",
+            name: `Thanh toán đơn hàng ${orderId}`,
+            price: amount,
+            quantity: 1,
+          }
+        ]
       })
-      .then((res) => res.json())
-      .then((data) => {
+      .then((result) => {
+        const data = result.data as CheckoutInitResult;
         if (data.payUrl) {
           setMomoPayUrl(data.payUrl);
           if (data.isMock) {
@@ -205,32 +205,26 @@ function CheckoutContent() {
   useEffect(() => {
     if (paymentMethod === "Stripe" && orderId) {
       setIsStripeLoading(true);
-      fetch("/api/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      initCheckoutPayment({
+        customer: {
+          name: "Khách Hàng Test",
+          phone: "0912345678",
+          address: "Địa chỉ Test",
+          note: "Test thanh toán Stripe",
         },
-        body: JSON.stringify({
-          customer: {
-            name: "Khách Hàng Test",
-            phone: "0912345678",
-            address: "Địa chỉ Test",
-            note: "Test thanh toán Stripe",
-          },
-          paymentMethod: "Stripe",
-          idempotencyKey: `idemp_${orderId}`,
-          items: [
-            {
-              productId: "1",
-              name: `Thanh toán đơn hàng ${orderId}`,
-              price: amount,
-              quantity: 1,
-            }
-          ]
-        })
+        paymentMethod: "Stripe",
+        idempotencyKey: `idemp_${orderId}`,
+        items: [
+          {
+            productId: "1",
+            name: `Thanh toán đơn hàng ${orderId}`,
+            price: amount,
+            quantity: 1,
+          }
+        ]
       })
-      .then((res) => res.json())
-      .then((data) => {
+      .then((result) => {
+        const data = result.data as CheckoutInitResult;
         if (data.clientSecret) {
           setClientSecret(data.clientSecret);
           if (data.isMock || data.clientSecret.startsWith("pi_mock")) {
@@ -277,28 +271,20 @@ function CheckoutContent() {
     const notifyLocalWebhook = async () => {
       try {
         if (paymentMethod === "Stripe" && isMockStripe) {
-          await fetch("/api/payment-webhook/stripe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "payment_intent.succeeded",
-              data: {
-                object: {
-                  metadata: { orderId },
-                  amountPaid: amount,
-                }
+          await notifyStripeWebhook({
+            type: "payment_intent.succeeded",
+            data: {
+              object: {
+                metadata: { orderId },
+                amountPaid: amount,
               }
-            })
+            }
           });
         } else if (paymentMethod === "Momo" && isMockMomo) {
-          await fetch("/api/payment-webhook/momo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              orderId,
-              resultCode: 0,
-              amount,
-            })
+          await notifyMomoWebhook({
+            orderId,
+            resultCode: 0,
+            amount,
           });
         }
       } catch (err) {

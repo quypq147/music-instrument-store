@@ -8,6 +8,7 @@ import type { Order } from "../../../types/cart";
 import { OrderTable } from "../../components/order/OrderTable";
 import { OrderDetailsModal } from "../../components/order/OrderDetailsModal";
 import { useToast } from "../../context/ToastContext";
+import { listAdminOrders, updateAdminOrderStatus } from "../../../lib/api/adminOrders";
 
 export default function AdminOrdersPage() {
   const { showToast } = useToast();
@@ -23,14 +24,9 @@ export default function AdminOrdersPage() {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch("/api/admin/orders", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
+      const result = await listAdminOrders(token);
+      if (result.ok) {
+        setOrders(result.data);
       }
     } catch (error) {
       console.error("Error fetching orders list:", error);
@@ -47,16 +43,9 @@ export default function AdminOrdersPage() {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch(`/api/admin/orders/${orderId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus, reason }),
-      });
+      const result = await updateAdminOrderStatus(token, orderId, newStatus, reason);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast(`Đã cập nhật trạng thái đơn hàng sang: ${newStatus}`, "success");
         await fetchOrders();
       } else {

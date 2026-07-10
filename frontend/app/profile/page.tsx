@@ -18,6 +18,8 @@ import type { Order } from "../../types/cart";
 import MusicLoading from "../components/common/MusicLoading";
 import { ImagePicker } from "../components/common/ImagePicker";
 import { slugify } from "../../lib/products";
+import { getProfile, updateProfile } from "../../lib/api/profile";
+import { getWishlist, removeFromWishlist } from "../../lib/api/wishlist";
 
 interface DbOrderItem {
   productId: string;
@@ -128,22 +130,15 @@ function ProfileContent() {
       const payload: Record<string, boolean | string> = {};
       if (provider === "google") {
         payload.googleLinked = isLink;
-        payload.googleEmail = isLink ? emailVal : "";
+        payload.googleEmail = isLink ? emailVal || "" : "";
       } else {
         payload.facebookLinked = isLink;
-        payload.facebookEmail = isLink ? emailVal : "";
+        payload.facebookEmail = isLink ? emailVal || "" : "";
       }
 
-      const res = await fetch("/api/users/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const result = await updateProfile(token, payload);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast(
           `${isLink ? "Liên kết" : "Hủy liên kết"} tài khoản ${
             provider === "google" ? "Google" : "Facebook"
@@ -183,13 +178,9 @@ function ProfileContent() {
       setAuthToken(token);
 
       // Fetch Profile
-      const profileRes = await fetch("/api/users/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (profileRes.ok) {
-        const { profile } = await profileRes.json();
+      const profileResult = await getProfile(token);
+      if (profileResult.ok) {
+        const { profile } = profileResult.data;
         setProfile(profile);
         setFormData({
           name: profile.name || "",
@@ -199,14 +190,9 @@ function ProfileContent() {
       }
 
       // Fetch Wishlist
-      const wishlistRes = await fetch("/api/users/wishlist", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (wishlistRes.ok) {
-        const wishlistData = await wishlistRes.json();
-        setWishlist(wishlistData);
+      const wishlistResult = await getWishlist(token);
+      if (wishlistResult.ok) {
+        setWishlist(wishlistResult.data);
       }
 
       // Fetch Orders
@@ -288,16 +274,9 @@ function ProfileContent() {
       const token = session.tokens?.idToken?.toString();
       if (!token) throw new Error("No token found");
 
-      const res = await fetch("/api/users/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
+      const result = await updateProfile(token, formData);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Cập nhật thông tin cá nhân thành công!", "success");
         fetchData();
       } else {
@@ -317,16 +296,9 @@ function ProfileContent() {
       const token = session.tokens?.idToken?.toString();
       if (!token) throw new Error("No token found");
 
-      const res = await fetch("/api/users/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ avatarUrl: publicUrl }),
-      });
+      const result = await updateProfile(token, { avatarUrl: publicUrl });
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Cập nhật ảnh đại diện thành công!", "success");
         fetchData();
       } else {
@@ -384,14 +356,9 @@ function ProfileContent() {
       const token = session.tokens?.idToken?.toString();
       if (!token) throw new Error("No token found");
 
-      const res = await fetch(`/api/users/wishlist/${productId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const result = await removeFromWishlist(token, productId);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Đã xóa sản phẩm khỏi danh sách yêu thích!", "success");
         fetchData();
       } else {

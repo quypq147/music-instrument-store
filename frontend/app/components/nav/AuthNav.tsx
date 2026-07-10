@@ -7,6 +7,7 @@ import { Hub } from "aws-amplify/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, ChevronDown, LogOut } from "lucide-react";
+import { getProfile } from "../../../lib/api/profile";
  
 export default function AuthNav() {
   const router = useRouter();
@@ -58,13 +59,9 @@ export default function AuthNav() {
           const session = await fetchAuthSession();
           const token = session.tokens?.idToken?.toString();
           if (token) {
-            const profileRes = await fetch("/api/users/profile", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-            if (profileRes.ok) {
-              const { profile } = await profileRes.json();
+            const profileResult = await getProfile(token);
+            if (profileResult.ok) {
+              const { profile } = profileResult.data;
               if (profile?.name) {
                 profileName = profile.name;
               }

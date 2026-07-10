@@ -6,14 +6,7 @@ import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
 import MusicLoading from "../../components/common/MusicLoading";
 import { Search, Plus, Edit2, Trash2, X, Tag } from "lucide-react";
-
-interface Category {
-  id: string;
-  name: string;
-  description: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+import { listCategories, deleteCategory, saveCategory, type Category } from "../../../lib/api/adminCategories";
 
 export default function AdminCategoriesPage() {
   const { showToast } = useToast();
@@ -33,10 +26,9 @@ export default function AdminCategoriesPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("/api/categories");
-      if (!res.ok) throw new Error("Failed to fetch categories");
-      const data = await res.json();
-      setCategories(data);
+      const result = await listCategories();
+      if (!result.ok) throw new Error("Failed to fetch categories");
+      setCategories(result.data);
     } catch (error) {
       console.error("Error fetching categories:", error);
       showToast("Không thể tải danh sách danh mục.", "error");
@@ -77,11 +69,9 @@ export default function AdminCategoriesPage() {
     if (!ok) return;
 
     try {
-      const res = await fetch(`/api/categories/${category.id}`, {
-        method: "DELETE",
-      });
+      const result = await deleteCategory(category.id);
 
-      if (!res.ok) throw new Error("Failed to delete category");
+      if (!result.ok) throw new Error("Failed to delete category");
 
       showToast("Xóa danh mục thành công!", "success");
       setLoading(true);
@@ -102,21 +92,11 @@ export default function AdminCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      const method = editCategory ? "PUT" : "POST";
-      const url = editCategory ? `/api/categories/${editCategory.id}` : "/api/categories";
+      const result = await saveCategory(editCategory?.id ?? null, formData);
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const responseData = await res.json();
-
-      if (!res.ok) {
-        throw new Error(responseData.error || "Failed to save category");
+      if (!result.ok) {
+        const errorData = result.data as { error?: string } | undefined;
+        throw new Error(errorData?.error || "Failed to save category");
       }
 
       showToast(

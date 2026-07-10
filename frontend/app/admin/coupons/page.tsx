@@ -9,19 +9,7 @@ import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
 import MusicLoading from "../../components/common/MusicLoading";
 import { Tag, Plus } from "lucide-react";
-
-interface Coupon {
-  code: string;
-  discountType: "percentage" | "fixed";
-  discountValue: number;
-  minOrderValue: number;
-  usageLimit: number | null;
-  usageCount: number;
-  validFrom: string;
-  validUntil: string | null;
-  isActive: boolean;
-  createdAt: string;
-}
+import { listCoupons, createCoupon, updateCoupon, deleteCoupon, type Coupon } from "../../../lib/api/adminCoupons";
 
 const emptyForm = {
   code: "",
@@ -53,14 +41,12 @@ export default function AdminCouponsPage() {
         showToast("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.", "error");
         return;
       }
-      const res = await fetch("/api/admin/coupons", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `Failed to fetch coupons (status ${res.status})`);
+      const result = await listCoupons(token);
+      if (!result.ok) {
+        const errorData = result.data as { error?: string } | undefined;
+        throw new Error(errorData?.error || `Failed to fetch coupons (status ${result.status})`);
       }
-      setCoupons(data);
+      setCoupons(result.data);
     } catch (error) {
       console.error("Error fetching coupons:", error);
       const detail = error instanceof Error ? error.message : "";
@@ -93,29 +79,22 @@ export default function AdminCouponsPage() {
         return;
       }
 
-      const res = await fetch("/api/admin/coupons", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          code: form.code.trim().toUpperCase(),
-          discountType: form.discountType,
-          discountValue: Number(form.discountValue),
-          minOrderValue: form.minOrderValue ? Number(form.minOrderValue) : 0,
-          usageLimit: form.usageLimit ? Number(form.usageLimit) : null,
-          validUntil: form.validUntil ? new Date(form.validUntil).toISOString() : null,
-        }),
+      const result = await createCoupon(token, {
+        code: form.code.trim().toUpperCase(),
+        discountType: form.discountType,
+        discountValue: Number(form.discountValue),
+        minOrderValue: form.minOrderValue ? Number(form.minOrderValue) : 0,
+        usageLimit: form.usageLimit ? Number(form.usageLimit) : null,
+        validUntil: form.validUntil ? new Date(form.validUntil).toISOString() : null,
       });
 
-      const data = await res.json();
-      if (res.ok) {
+      if (result.ok) {
         showToast("Đã tạo mã giảm giá!", "success");
         setForm(emptyForm);
         fetchCoupons();
       } else {
-        showToast(data.error ? `Tạo mã thất bại: ${data.error}` : "Tạo mã giảm giá thất bại.", "error");
+        const errorData = result.data as { error?: string } | undefined;
+        showToast(errorData?.error ? `Tạo mã thất bại: ${errorData.error}` : "Tạo mã giảm giá thất bại.", "error");
       }
     } catch (error) {
       console.error("Error creating coupon:", error);
@@ -134,21 +113,14 @@ export default function AdminCouponsPage() {
         return;
       }
 
-      const res = await fetch(`/api/admin/coupons/${encodeURIComponent(coupon.code)}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !coupon.isActive }),
-      });
+      const result = await updateCoupon(token, coupon.code, { isActive: !coupon.isActive });
 
-      if (res.ok) {
+      if (result.ok) {
         showToast(coupon.isActive ? "Đã tạm dừng mã giảm giá." : "Đã kích hoạt lại mã giảm giá.", "success");
         fetchCoupons();
       } else {
-        const data = await res.json().catch(() => ({}));
-        showToast(data.error || "Không thể cập nhật mã giảm giá.", "error");
+        const errorData = result.data as { error?: string } | undefined;
+        showToast(errorData?.error || "Không thể cập nhật mã giảm giá.", "error");
       }
     } catch (error) {
       console.error("Error toggling coupon:", error);
@@ -173,17 +145,14 @@ export default function AdminCouponsPage() {
         return;
       }
 
-      const res = await fetch(`/api/admin/coupons/${encodeURIComponent(coupon.code)}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const result = await deleteCoupon(token, coupon.code);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Đã xóa mã giảm giá.", "success");
         fetchCoupons();
       } else {
-        const data = await res.json().catch(() => ({}));
-        showToast(data.error || "Không thể xóa mã giảm giá.", "error");
+        const errorData = result.data as { error?: string } | undefined;
+        showToast(errorData?.error || "Không thể xóa mã giảm giá.", "error");
       }
     } catch (error) {
       console.error("Error deleting coupon:", error);

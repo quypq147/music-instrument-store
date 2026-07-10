@@ -9,6 +9,7 @@ import { ProductTable } from "../../components/product/ProductTable";
 import { ProductModal } from "../../components/product/ProductModal";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
+import { listProducts, deleteProduct, saveProduct } from "../../../lib/api/adminProducts";
 
 export default function AdminProductsPage() {
   const { showToast } = useToast();
@@ -21,13 +22,20 @@ export default function AdminProductsPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    id: string;
+    name: string;
+    brand: string;
+    type: string;
+    price: number;
+    description: string;
+    stock: number | null;
+  }>({
     id: "",
     name: "",
     brand: "",
     type: "Alto Saxophone",
     price: 0,
-    imageUrl: "",
     description: "",
     stock: 0,
   });
@@ -43,10 +51,9 @@ export default function AdminProductsPage() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/products");
-      if (!res.ok) throw new Error("Failed to fetch products");
-      const data = await res.json();
-      setProducts(data);
+      const result = await listProducts();
+      if (!result.ok) throw new Error("Failed to fetch products");
+      setProducts(result.data);
     } catch (error) {
       console.error("Error fetching products:", error);
     } finally {
@@ -66,7 +73,6 @@ export default function AdminProductsPage() {
       brand: "",
       type: "Alto Saxophone",
       price: 0,
-      imageUrl: "",
       description: "",
       stock: 0,
     });
@@ -81,9 +87,8 @@ export default function AdminProductsPage() {
       brand: product.brand,
       type: product.type || "Alto Saxophone",
       price: product.price,
-      imageUrl: product.imageUrl,
       description: product.description,
-      stock: typeof product.stock === "number" ? product.stock : 0,
+      stock: typeof product.stock === "number" ? product.stock : null,
     });
     setIsModalOpen(true);
   };
@@ -99,14 +104,9 @@ export default function AdminProductsPage() {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
 
-      const res = await fetch(`/api/products/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": token ? `Bearer ${token}` : "",
-        },
-      });
+      const result = await deleteProduct(token, id);
 
-      if (!res.ok) throw new Error("Failed to delete product");
+      if (!result.ok) throw new Error("Failed to delete product");
 
       showToast("Xóa sản phẩm thành công!", "success");
       setLoading(true);
@@ -117,32 +117,27 @@ export default function AdminProductsPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, images: string[]) => {
     e.preventDefault();
 
-    if (!formData.id || !formData.name || !formData.brand || !formData.imageUrl || !formData.description || formData.price <= 0 || formData.stock < 0) {
+    if (!formData.id || !formData.name || !formData.brand || !formData.description || formData.price <= 0 || (formData.stock ?? 0) < 0) {
       showToast("Vui lòng nhập đầy đủ các thông tin hợp lệ!", "warning");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const method = editProduct ? "PUT" : "POST";
-      const url = editProduct ? `/api/products/${editProduct.id}` : "/api/products";
-
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify(formData),
+      const result = await saveProduct(token, editProduct?.id ?? formData.id, !!editProduct, {
+        ...formData,
+        imageUrl: images[0],
+        images,
+        ...(formData.stock === null ? { stock: undefined } : {}),
       });
 
-      if (!res.ok) throw new Error("Failed to save product");
+      if (!result.ok) throw new Error("Failed to save product");
 
       showToast(editProduct ? "Cập nhật sản phẩm thành công!" : "Thêm sản phẩm thành công!", "success");
       setIsModalOpen(false);
@@ -156,7 +151,7 @@ export default function AdminProductsPage() {
     }
   };
 
-  const handleFormDataChange = (field: keyof typeof formData, value: string | number) => {
+  const handleFormDataChange = (field: keyof typeof formData, value: string | number | null) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,

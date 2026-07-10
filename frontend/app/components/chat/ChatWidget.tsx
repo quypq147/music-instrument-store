@@ -5,17 +5,19 @@ import { useState, useRef, useEffect } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { MessageSquare, Send, X, ArrowUpRight, Paperclip } from "lucide-react";
 import { useToast } from "../../context/ToastContext";
+import { getProfile } from "../../../lib/api/profile";
+import {
+  getChatHistory,
+  sendChatMessage,
+  requestHumanSupport,
+  resetToBot,
+  uploadChatFile,
+  type ChatMessage as RawChatMessage,
+} from "../../../lib/api/chat";
 
 interface Message {
   text: string;
   sender: "user" | "bot" | "staff" | "system";
-  senderName?: string;
-  createdAt?: string;
-}
-
-interface RawChatMessage {
-  text: string;
-  sender: string;
   senderName?: string;
   createdAt?: string;
 }
@@ -68,13 +70,9 @@ export default function ChatWidget() {
           
           let profileName = attrs.name || attrs.given_name || attrs.family_name || attrs.email;
           try {
-            const profileRes = await fetch("/api/users/profile", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-            if (profileRes.ok) {
-              const { profile } = await profileRes.json();
+            const profileResult = await getProfile(token);
+            if (profileResult.ok) {
+              const { profile } = profileResult.data;
               if (profile?.name) {
                 profileName = profile.name;
               }
@@ -98,9 +96,9 @@ export default function ChatWidget() {
   // Lấy lịch sử hội thoại khi mở khung chat
   const fetchHistory = async () => {
     try {
-      const res = await fetch(`/api/chat/history?sessionId=${sessionId}`);
-      if (res.ok) {
-        const data = await res.json();
+      const result = await getChatHistory(sessionId);
+      if (result.ok) {
+        const data = result.data;
         if (data.session) {
           setSessionStatus(data.session.status);
           setAssignedStaff(data.session.assignedStaffName || "");
@@ -144,9 +142,9 @@ export default function ChatWidget() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/chat/history?sessionId=${sessionId}`);
-        if (res.ok) {
-          const data = await res.json();
+        const result = await getChatHistory(sessionId);
+        if (result.ok) {
+          const data = result.data;
           if (data.session) {
             // Hiển thị thông báo khi nhân viên đóng phiên
             if (sessionStatus === "HUMAN_CONNECTED" && data.session.status === "CLOSED") {
@@ -155,10 +153,11 @@ export default function ChatWidget() {
             setSessionStatus(data.session.status);
             setAssignedStaff(data.session.assignedStaffName || "");
           }
-          if (data.messages && data.messages.length > 0) {
+          const newMessages = data.messages;
+          if (newMessages && newMessages.length > 0) {
             setMessages((prev) => {
-              if (data.messages.length > prev.length) {
-                return data.messages.map((m: RawChatMessage) => ({
+              if (newMessages.length > prev.length) {
+                return newMessages.map((m: RawChatMessage) => ({
                   text: m.text,
                   sender: m.sender.toLowerCase() as Message["sender"],
                   senderName: m.senderName,
@@ -181,12 +180,8 @@ export default function ChatWidget() {
   const handleRequestHuman = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/chat/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
-      if (res.ok) {
+      const result = await requestHumanSupport(sessionId);
+      if (result.ok) {
         showToast("Đã gửi yêu cầu kết nối với nhân viên hỗ trợ.", "info");
         setSessionStatus("HUMAN_WAITING");
         await fetchHistory();
@@ -205,12 +200,8 @@ export default function ChatWidget() {
   const handleRestartAI = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/chat/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
-      if (res.ok) {
+      const result = await resetToBot(sessionId);
+      if (result.ok) {
         showToast("Đã kết nối lại với trợ lý ảo AI.", "success");
         setSessionStatus("BOT");
         await fetchHistory();
@@ -243,21 +234,17 @@ export default function ChatWidget() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: userMsgText,
-          sessionId,
-          userEmail: userProfile?.email || "",
-          userName: userProfile?.name || "Khách",
-        }),
+      const result = await sendChatMessage({
+        text: userMsgText,
+        sessionId,
+        userEmail: userProfile?.email || "",
+        userName: userProfile?.name || "Khách",
       });
 
-      if (!res.ok) throw new Error("Gửi tin nhắn thất bại");
+      if (!result.ok) throw new Error("Gửi tin nhắn thất bại");
 
-      const data = await res.json();
-      
+      const data = result.data;
+
       // Nếu là chế độ BOT, cập nhật phản hồi tự động ngay lập tức
       if (data.messages && data.messages.length > 0) {
         data.messages.forEach((msg: string) => {
@@ -294,22 +281,17 @@ export default function ChatWidget() {
     }
 
     setIsLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
 
     try {
-      const uploadRes = await fetch("/api/chat/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const uploadResult = await uploadChatFile(file);
 
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json();
-        throw new Error(errorData.error || "Tải file lên thất bại");
+      if (!uploadResult.ok) {
+        const errorData = uploadResult.data as { error?: string } | undefined;
+        throw new Error(errorData?.error || "Tải file lên thất bại");
       }
 
-      const uploadData = await uploadRes.json();
-      
+      const uploadData = uploadResult.data;
+
       // Định dạng tin nhắn đặc biệt chứa thông tin file
       const fileMsgText = `[FILE:${uploadData.url}|${uploadData.fileName}|${uploadData.fileType}|${uploadData.fileSize}]`;
 
@@ -322,21 +304,17 @@ export default function ChatWidget() {
 
       setMessages((prev) => [...prev, tempUserMessage]);
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: fileMsgText,
-          sessionId,
-          userEmail: userProfile?.email || "",
-          userName: userProfile?.name || "Khách",
-        }),
+      const result = await sendChatMessage({
+        text: fileMsgText,
+        sessionId,
+        userEmail: userProfile?.email || "",
+        userName: userProfile?.name || "Khách",
       });
 
-      if (!res.ok) throw new Error("Gửi tin nhắn chứa file thất bại");
+      if (!result.ok) throw new Error("Gửi tin nhắn chứa file thất bại");
 
-      const data = await res.json();
-      
+      const data = result.data;
+
       if (data.messages && data.messages.length > 0) {
         data.messages.forEach((msg: string) => {
           setMessages((prev) => [
