@@ -9,6 +9,7 @@ import { ProductTable } from "../../components/product/ProductTable";
 import { ProductModal } from "../../components/product/ProductModal";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
+import { listProducts, deleteProduct, saveProduct } from "../../../lib/api/adminProducts";
 
 export default function AdminProductsPage() {
   const { showToast } = useToast();
@@ -43,10 +44,9 @@ export default function AdminProductsPage() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/products");
-      if (!res.ok) throw new Error("Failed to fetch products");
-      const data = await res.json();
-      setProducts(data);
+      const result = await listProducts();
+      if (!result.ok) throw new Error("Failed to fetch products");
+      setProducts(result.data);
     } catch (error) {
       console.error("Error fetching products:", error);
     } finally {
@@ -99,14 +99,9 @@ export default function AdminProductsPage() {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
 
-      const res = await fetch(`/api/products/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": token ? `Bearer ${token}` : "",
-        },
-      });
+      const result = await deleteProduct(token, id);
 
-      if (!res.ok) throw new Error("Failed to delete product");
+      if (!result.ok) throw new Error("Failed to delete product");
 
       showToast("Xóa sản phẩm thành công!", "success");
       setLoading(true);
@@ -127,22 +122,12 @@ export default function AdminProductsPage() {
 
     setIsSubmitting(true);
     try {
-      const method = editProduct ? "PUT" : "POST";
-      const url = editProduct ? `/api/products/${editProduct.id}` : "/api/products";
-
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify(formData),
-      });
+      const result = await saveProduct(token, editProduct?.id ?? formData.id, !!editProduct, formData);
 
-      if (!res.ok) throw new Error("Failed to save product");
+      if (!result.ok) throw new Error("Failed to save product");
 
       showToast(editProduct ? "Cập nhật sản phẩm thành công!" : "Thêm sản phẩm thành công!", "success");
       setIsModalOpen(false);

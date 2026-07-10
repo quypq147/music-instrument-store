@@ -5,17 +5,15 @@ import { fetchAuthSession } from "aws-amplify/auth";
 import MusicLoading from "../../components/common/MusicLoading";
 import { Send, User, CheckCircle2, AlertCircle, XCircle, Download, Paperclip, ArrowLeft } from "lucide-react";
 import { useToast } from "../../context/ToastContext";
-
-interface ChatSession {
-  sessionId: string;
-  userId: string;
-  userName: string;
-  status: "BOT" | "HUMAN_WAITING" | "HUMAN_CONNECTED" | "CLOSED";
-  assignedStaffId?: string;
-  assignedStaffName?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import {
+  getChatHistory,
+  sendChatMessage,
+  uploadChatFile,
+  listAdminChatSessions,
+  assignAdminChatSession,
+  closeAdminChatSession,
+  type ChatSession,
+} from "../../../lib/api/chat";
 
 interface Message {
   sender: "user" | "bot" | "staff" | "system";
@@ -71,9 +69,9 @@ export default function AdminChatPage() {
   // 2. Fetch danh sách các phiên chat
   const fetchSessions = async () => {
     try {
-      const res = await fetch("/api/chat/admin/sessions");
-      if (res.ok) {
-        const data = await res.json();
+      const result = await listAdminChatSessions();
+      if (result.ok) {
+        const data = result.data;
         setWaitingSessions(data.waiting || []);
         setActiveSessions(data.active || []);
 
@@ -105,10 +103,9 @@ export default function AdminChatPage() {
   // 3. Tải tin nhắn của phiên đang được chọn
   const fetchHistory = async (sessId: string) => {
     try {
-      const res = await fetch(`/api/chat/history?sessionId=${sessId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages || []);
+      const result = await getChatHistory(sessId);
+      if (result.ok) {
+        setMessages((result.data.messages as Message[]) || []);
       }
     } catch (err) {
       console.error("Failed to fetch history:", err);
@@ -141,17 +138,9 @@ export default function AdminChatPage() {
     if (!staffInfo) return;
     setIsLoading(true);
     try {
-      const res = await fetch("/api/chat/admin/assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          staffId: staffInfo.email,
-          staffName: staffInfo.name,
-        }),
-      });
+      const result = await assignAdminChatSession(session.sessionId, staffInfo.email, staffInfo.name);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast(`Đã tiếp nhận hỗ trợ cuộc trò chuyện của ${session.userName}!`, "success");
         await fetchSessions();
         setSelectedSession({
@@ -176,13 +165,9 @@ export default function AdminChatPage() {
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/chat/admin/close", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: selectedSession.sessionId }),
-      });
+      const result = await closeAdminChatSession(selectedSession.sessionId);
 
-      if (res.ok) {
+      if (result.ok) {
         showToast("Đã đóng phiên trò chuyện và lưu file thành công!", "success");
         // Tải xuống bản sao lưu trước khi đóng phiên (Tùy chọn)
         handleDownloadBackup();
@@ -206,20 +191,16 @@ export default function AdminChatPage() {
     setIsSending(true);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: textToSend,
-          sessionId: selectedSession.sessionId,
-          userEmail: staffInfo.email,
-          userName: staffInfo.name,
-          sender: "STAFF",
-          senderName: staffInfo.name,
-        }),
+      const result = await sendChatMessage({
+        text: textToSend,
+        sessionId: selectedSession.sessionId,
+        userEmail: staffInfo.email,
+        userName: staffInfo.name,
+        sender: "STAFF",
+        senderName: staffInfo.name,
       });
 
-      if (res.ok) {
+      if (result.ok) {
         await fetchHistory(selectedSession.sessionId);
       } else {
         showToast("Không thể gửi tin nhắn. Vui lòng kiểm tra lại kết nối.", "error");
@@ -243,38 +224,29 @@ export default function AdminChatPage() {
     }
 
     setIsSending(true);
-    const formData = new FormData();
-    formData.append("file", file);
 
     try {
-      const uploadRes = await fetch("/api/chat/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const uploadResult = await uploadChatFile(file);
 
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json();
-        throw new Error(errorData.error || "Tải file lên thất bại");
+      if (!uploadResult.ok) {
+        const errorData = uploadResult.data as { error?: string } | undefined;
+        throw new Error(errorData?.error || "Tải file lên thất bại");
       }
 
-      const uploadData = await uploadRes.json();
-      
+      const uploadData = uploadResult.data;
+
       const fileMsgText = `[FILE:${uploadData.url}|${uploadData.fileName}|${uploadData.fileType}|${uploadData.fileSize}]`;
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: fileMsgText,
-          sessionId: selectedSession.sessionId,
-          userEmail: staffInfo.email,
-          userName: staffInfo.name,
-          sender: "STAFF",
-          senderName: staffInfo.name,
-        }),
+      const result = await sendChatMessage({
+        text: fileMsgText,
+        sessionId: selectedSession.sessionId,
+        userEmail: staffInfo.email,
+        userName: staffInfo.name,
+        sender: "STAFF",
+        senderName: staffInfo.name,
       });
 
-      if (res.ok) {
+      if (result.ok) {
         showToast(`Đã gửi đính kèm file ${file.name} thành công!`, "success");
         await fetchHistory(selectedSession.sessionId);
       } else {

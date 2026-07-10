@@ -9,6 +9,8 @@ import { StatCard } from "../components/admin/StatCard";
 import { ORDER_STATUSES, getStatusClasses } from "../components/order/OrderTable";
 import MusicLoading from "../components/common/MusicLoading";
 import { formatOrderCode } from "../lib/order";
+import { listAdminOrders } from "../../lib/api/adminOrders";
+import { listAdminUsers } from "../../lib/api/adminUsers";
 
 interface AdminUser {
   userId: string;
@@ -37,19 +39,15 @@ export default function AdminDashboardPage() {
         const session = await fetchAuthSession();
         const token = session.tokens?.idToken?.toString();
 
-        const [productsRes, ordersRes, usersRes] = await Promise.all([
+        const [productsRes, ordersResult, usersResult] = await Promise.all([
           fetch("/api/products"),
-          token
-            ? fetch("/api/admin/orders", { headers: { Authorization: `Bearer ${token}` } })
-            : Promise.resolve(null),
-          token
-            ? fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } })
-            : Promise.resolve(null),
+          token ? listAdminOrders(token) : Promise.resolve(null),
+          token ? listAdminUsers(token) : Promise.resolve(null),
         ]);
 
         if (productsRes.ok) setProducts(await productsRes.json());
-        if (ordersRes?.ok) setOrders(await ordersRes.json());
-        if (usersRes?.ok) setUsers(await usersRes.json());
+        if (ordersResult?.ok) setOrders(ordersResult.data);
+        if (usersResult?.ok) setUsers(usersResult.data);
       } catch (error) {
         console.error("Failed to load dashboard data:", error);
       } finally {

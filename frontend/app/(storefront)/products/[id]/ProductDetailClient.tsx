@@ -14,6 +14,7 @@ import { useCart } from "../../../context/CartContext";
 import { useToast } from "../../../context/ToastContext";
 import { ProductCard } from "../../../components/product/ProductCard";
 import type { Product } from "../../../../types/product";
+import { getWishlist, addToWishlist, removeFromWishlist } from "../../../../lib/api/wishlist";
 
 type ProductDetailClientProps = {
   product: Product;
@@ -112,17 +113,9 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
       const token = session.tokens?.idToken?.toString();
       if (!token) return;
 
-      const res = await fetch("/api/users/wishlist", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (res.ok) {
-        interface WishlistItem {
-          productId: string | number;
-        }
-        const wishlist = await res.json() as WishlistItem[];
-        const found = wishlist.some((item) => String(item.productId) === String(product.id));
+      const result = await getWishlist(token);
+      if (result.ok) {
+        const found = result.data.some((item) => String(item.productId) === String(product.id));
         setIsInWishlist(found);
       }
     } catch (err) {
@@ -235,13 +228,8 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
 
       if (isInWishlist) {
         // Remove from wishlist
-        const res = await fetch(`/api/users/wishlist/${product.id}`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (res.ok) {
+        const result = await removeFromWishlist(token, product.id);
+        if (result.ok) {
           setIsInWishlist(false);
           showToast("Đã xóa sản phẩm khỏi danh sách yêu thích!", "info");
         } else {
@@ -249,15 +237,8 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         }
       } else {
         // Add to wishlist
-        const res = await fetch("/api/users/wishlist", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ productId: product.id }),
-        });
-        if (res.ok) {
+        const result = await addToWishlist(token, product.id);
+        if (result.ok) {
           setIsInWishlist(true);
           showToast("Đã thêm sản phẩm vào danh sách yêu thích!", "success");
         } else {

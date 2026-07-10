@@ -7,6 +7,9 @@ import { fetchAuthSession } from "aws-amplify/auth";
 import { AdminSidebar } from "../components/admin/AdminSidebar";
 import MusicLoading from "../components/common/MusicLoading";
 import { Menu, X } from "lucide-react";
+import { getProfile } from "../../lib/api/profile";
+import { updateAdminUser } from "../../lib/api/adminUsers";
+import { getStoreOrigin } from "../../lib/adminHost";
 
 export default function AdminLayout({
   children,
@@ -38,26 +41,17 @@ export default function AdminLayout({
           // Proactively initialize/sync staff/admin profile in DynamoDB
           if (userId) {
             try {
-              const token = idToken?.toString();
-              const profileRes = await fetch("/api/users/profile", {
-                headers: { Authorization: token ? `Bearer ${token}` : "" }
-              });
-              if (profileRes.ok) {
-                const { profile } = await profileRes.json();
+              const token = idToken?.toString() || "";
+              const profileResult = await getProfile(token);
+              if (profileResult.ok) {
+                const { profile } = profileResult.data;
                 if (!profile || profile.role !== determinedRole) {
-                  await fetch(`/api/admin/users/${userId}`, {
-                    method: "PUT",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: token ? `Bearer ${token}` : ""
-                    },
-                    body: JSON.stringify({
-                      name: profile?.name || name || "Support Staff",
-                      phone: profile?.phone || "",
-                      address: profile?.address || "",
-                      role: determinedRole,
-                      email: email || ""
-                    })
+                  await updateAdminUser(token, userId, {
+                    name: profile?.name || name || "Support Staff",
+                    phone: profile?.phone || "",
+                    address: profile?.address || "",
+                    role: determinedRole,
+                    email: email || ""
                   });
                 }
               }
@@ -93,7 +87,7 @@ export default function AdminLayout({
           <p className="text-sm text-slate-600 leading-relaxed mb-6">
             Tài khoản của bạn không có quyền truy cập vào khu vực quản trị. Vui lòng đăng nhập bằng tài khoản có đặc quyền Admin.
           </p>
-          <Link href="/">
+          <Link href={getStoreOrigin() || "/"}>
             <button
               type="button"
               className="w-full bg-[#002B1F] hover:bg-[#054030] text-white font-bold text-sm uppercase tracking-widest py-3.5 rounded-xl transition-colors"
@@ -103,7 +97,7 @@ export default function AdminLayout({
           </Link>
           <p className="text-sm text-slate-500 mt-6">
             Có tài khoản Admin?{" "}
-            <Link href="/login" className="text-[#A36B2B] font-bold hover:underline">
+            <Link href={`${getStoreOrigin()}/login`} className="text-[#A36B2B] font-bold hover:underline">
               Đăng nhập tại đây
             </Link>
           </p>

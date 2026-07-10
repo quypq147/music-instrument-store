@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut, fetchAuthSession } from "aws-amplify/auth";
 
 import { useState, useEffect } from "react";
+import { adminHref, getStoreOrigin } from "../../../lib/adminHost";
 
 export function AdminSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
@@ -26,14 +27,16 @@ export function AdminSidebar({ onClose }: { onClose?: () => void }) {
     checkRole();
   }, []);
 
-  const isActive = (href: string, exact?: boolean) =>
-    exact ? pathname === href : pathname.startsWith(href);
+  const isActive = (href: string, exact?: boolean) => {
+    const target = adminHref(href);
+    return exact ? pathname === target : pathname.startsWith(target);
+  };
 
   const handleSignOut = async () => {
     try {
       await signOut();
       router.refresh();
-      window.location.href = "/";
+      window.location.href = getStoreOrigin();
     } catch (error) {
       console.error("Lỗi khi đăng xuất:", error);
     }
@@ -65,7 +68,7 @@ export function AdminSidebar({ onClose }: { onClose?: () => void }) {
         {items.map((item) => (
           <Link
             key={item.href}
-            href={item.href}
+            href={adminHref(item.href)}
             onClick={onClose}
             className={`text-left text-sm font-semibold px-4 py-3 rounded-xl transition-colors ${
               isActive(item.href, item.exact)
