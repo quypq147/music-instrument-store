@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "../../../types/product";
-import { ImagePicker } from "../common/ImagePicker";
+import { ProductImagesPicker, type ProductImagesPickerHandle } from "./ProductImagesPicker";
 import { useToast } from "../../context/ToastContext";
 
 interface ProductFormData {
@@ -11,18 +11,17 @@ interface ProductFormData {
   brand: string;
   type: string;
   price: number;
-  imageUrl: string;
   description: string;
-  stock: number;
+  stock: number | null;
 }
 
 interface ProductModalProps {
   isOpen: boolean;
   editProduct: Product | null;
   formData: ProductFormData;
-  onChangeField: (field: keyof ProductFormData, value: string | number) => void;
+  onChangeField: (field: keyof ProductFormData, value: string | number | null) => void;
   isSubmitting: boolean;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (e: React.FormEvent, images: string[]) => void;
   onClose: () => void;
   authToken: string;
 }
@@ -43,6 +42,8 @@ export function ProductModal({
 }: ProductModalProps) {
   const { showToast } = useToast();
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const imagesPickerRef = useRef<ProductImagesPickerHandle>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -70,6 +71,34 @@ export function ProductModal({
 
   const displayedCategories = categories.length > 0 ? categories : defaultCategories;
 
+  const initialImages = editProduct?.images && editProduct.images.length > 0
+    ? editProduct.images
+    : editProduct?.imageUrl
+      ? [editProduct.imageUrl]
+      : [];
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!imagesPickerRef.current) return;
+
+    setIsUploadingImages(true);
+    try {
+      const images = await imagesPickerRef.current.uploadPending(
+        authToken,
+        `/api/products/${formData.id}/image-upload-url`
+      );
+      if (images.length === 0) {
+        showToast("Vui lòng chọn ít nhất 1 ảnh sản phẩm", "warning");
+        return;
+      }
+      onSubmit(e, images);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Không thể tải ảnh lên", "error");
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -88,7 +117,7 @@ export function ProductModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5">
+        <form onSubmit={handleFormSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="prod-id" className={labelClasses}>Mã sản phẩm (ID)</label>
@@ -166,10 +195,10 @@ export function ProductModal({
                 id="prod-stock"
                 type="number"
                 min="0"
-                value={formData.stock}
-                onChange={(e) => onChangeField("stock", Number(e.target.value))}
+                value={formData.stock ?? ""}
+                onChange={(e) => onChangeField("stock", e.target.value === "" ? null : Number(e.target.value))}
                 disabled={isSubmitting}
-                placeholder="Ví dụ: 10"
+                placeholder={formData.stock === null ? "Chưa thiết lập tồn kho" : "Ví dụ: 10"}
                 className={inputClasses}
               />
             </div>
@@ -177,13 +206,11 @@ export function ProductModal({
 
           <div>
             <label className={labelClasses}>Hình ảnh sản phẩm</label>
-            <ImagePicker
-              currentImageUrl={formData.imageUrl}
-              uploadUrlEndpoint={`/api/products/${formData.id}/image-upload-url`}
-              authToken={authToken}
-              onUploaded={(publicUrl) => onChangeField("imageUrl", publicUrl)}
+            <ProductImagesPicker
+              ref={imagesPickerRef}
+              initialImages={initialImages}
               onError={(message) => showToast(message, "error")}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImages}
             />
           </div>
 
@@ -203,15 +230,15 @@ export function ProductModal({
           <div className="flex gap-3 pt-2">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImages}
               className="flex-1 bg-[#002B1F] hover:bg-[#054030] text-white font-bold text-sm uppercase tracking-widest py-3.5 rounded-xl transition-colors disabled:opacity-60"
             >
-              {isSubmitting ? "Đang xử lý..." : editProduct ? "Cập Nhật" : "Thêm Mới"}
+              {isUploadingImages ? "Đang tải ảnh lên..." : isSubmitting ? "Đang xử lý..." : editProduct ? "Cập Nhật" : "Thêm Mới"}
             </button>
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImages}
               className="px-6 border border-gray-200 text-slate-600 font-bold text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60"
             >
               Hủy

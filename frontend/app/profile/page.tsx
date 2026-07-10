@@ -128,10 +128,10 @@ function ProfileContent() {
       const payload: Record<string, boolean | string> = {};
       if (provider === "google") {
         payload.googleLinked = isLink;
-        payload.googleEmail = isLink ? emailVal : "";
+        payload.googleEmail = isLink ? emailVal || "" : "";
       } else {
         payload.facebookLinked = isLink;
-        payload.facebookEmail = isLink ? emailVal : "";
+        payload.facebookEmail = isLink ? emailVal || "" : "";
       }
 
       const res = await fetch("/api/users/profile", {

@@ -67,6 +67,7 @@ export function ProductTable({
                 <th className="p-4">Thương Hiệu</th>
                 <th className="p-4">Phân Loại</th>
                 <th className="p-4">Giá Bán</th>
+                <th className="p-4">Tồn Kho</th>
                 <th className="p-4 text-right">Thao Tác</th>
               </tr>
             </thead>
@@ -99,6 +100,23 @@ export function ProductTable({
                     <strong className="text-[#A36B2B]">
                       {product.price.toLocaleString("vi-VN")}đ
                     </strong>
+                  </td>
+                  <td className="p-4">
+                    {product.stock === null || product.stock === undefined ? (
+                      <span className="text-xs text-slate-400 italic">Chưa thiết lập</span>
+                    ) : (
+                      <span
+                        className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                          product.stock <= 0
+                            ? "bg-rose-50 text-rose-600"
+                            : product.stock <= 5
+                              ? "bg-amber-50 text-amber-600"
+                              : "bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {product.stock}
+                      </span>
+                    )}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
