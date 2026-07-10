@@ -15,6 +15,7 @@ import * as cw from "aws-cdk-lib/aws-cloudwatch";
 import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as sns_subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as ses from "aws-cdk-lib/aws-ses";
 import { Construct } from "constructs";
 
 interface BackendProps extends cdk.StackProps {
@@ -150,6 +151,19 @@ export class BackendStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
+    // SES: identity email dùng làm "From" cho mọi email hệ thống gửi (thông báo đơn hàng, chiến dịch,
+    // liên hệ). Đây là identity dạng "single email" — sau khi deploy, AWS tự gửi 1 email xác minh tới
+    // địa chỉ này; phải bấm link xác minh trong email đó thì SES mới thực sự gửi được (không có bước
+    // này, provider sẽ tự rơi vào "mock mode", xem services/notification/.../sesEmailProvider.ts).
+    // Đặt cùng 1 giá trị ở đây và trong environment của các Lambda bên dưới để không bị lệch nhau.
+    const sesFromEmail = process.env.SES_FROM_EMAIL || "no-reply@soniccart.dev";
+    new ses.EmailIdentity(this, "SesFromEmailIdentity", {
+      identity: ses.Identity.email(sesFromEmail),
+    });
+    new cdk.CfnOutput(this, "SesFromEmailVerificationNote", {
+      value: `Kiểm tra hộp thư ${sesFromEmail} và bấm link xác minh AWS SES gửi tới sau khi deploy stack này.`,
+    });
+
     // Notification Service Lambda (Lắng nghe NotificationQueue hoặc gọi đồng bộ)
     const notificationApiLambda = new lambda.Function(this, "NotificationApiFunction", {
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -157,7 +171,7 @@ export class BackendStack extends cdk.Stack {
       code: lambda.Code.fromAsset("../services/notification"),
       environment: {
         TABLE_NAME: props.productsTable.tableName,
-        SES_FROM_EMAIL: process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com",
+        SES_FROM_EMAIL: sesFromEmail,
       },
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -176,7 +190,7 @@ export class BackendStack extends cdk.Stack {
       code: lambda.Code.fromAsset("../services/notification"),
       environment: {
         TABLE_NAME: props.productsTable.tableName,
-        SES_FROM_EMAIL: process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com",
+        SES_FROM_EMAIL: sesFromEmail,
       },
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -214,7 +228,7 @@ export class BackendStack extends cdk.Stack {
       handler: "index.handler",
       code: lambda.Code.fromAsset("../services/contact-api"),
       environment: {
-        SES_FROM_EMAIL: process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com",
+        SES_FROM_EMAIL: sesFromEmail,
         CONTACT_INBOX_EMAIL: process.env.CONTACT_INBOX_EMAIL || "support@nhomtttnmusic.vn",
       },
       tracing: lambda.Tracing.ACTIVE,
