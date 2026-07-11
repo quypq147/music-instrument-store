@@ -69,9 +69,23 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // Sinh idempotency key nếu client không gửi lên
     const resolvedIdempotencyKey = idempotencyKey || `idemp_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
 
-    // Thực hiện giữ chỗ tồn kho (Inventory Reservation) bằng TransactWrite
+    const mockOrderId = resolvedIdempotencyKey.replace("idemp_", "");
+
+    // Thực hiện giữ chỗ tồn kho (Inventory Reservation) bằng TransactWrite.
+    // Marker RESERVATION#<orderId> được ghi atomic cùng transaction: nếu marker đã tồn tại
+    // ở trạng thái RESERVED (client gửi lại cùng idempotency key) thì KHÔNG trừ kho lần nữa;
+    // nếu marker ở trạng thái RELEASED (thanh toán trước đó fail và đã hoàn kho) thì cho phép
+    // giữ chỗ lại. Webhook thanh toán dùng marker này để commit/hoàn kho đúng một lần.
     if (tableName) {
-      const transactItems = items.map((item: { productId: string | number; quantity?: number }) => {
+      const now = new Date().toISOString();
+      const reservationItems = items.map(
+        (item: { productId: string | number; quantity?: number }) => ({
+          productId: String(item.productId),
+          quantity: item.quantity || 1,
+        })
+      );
+
+      const transactItems: any[] = items.map((item: { productId: string | number; quantity?: number }) => {
         const qty = item.quantity || 1;
         const productId = String(item.productId);
         return {
@@ -85,10 +99,29 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             ConditionExpression: "stock >= :qty",
             ExpressionAttributeValues: {
               ":qty": qty,
-              ":now": new Date().toISOString(),
+              ":now": now,
             },
           },
         };
+      });
+
+      // Marker luôn nằm cuối transactItems để nhận diện trong CancellationReasons
+      transactItems.push({
+        Put: {
+          TableName: tableName,
+          Item: {
+            PK: `RESERVATION#${mockOrderId}`,
+            SK: "METADATA",
+            status: "RESERVED",
+            idempotencyKey: resolvedIdempotencyKey,
+            items: reservationItems,
+            createdAt: now,
+            updatedAt: now,
+          },
+          ConditionExpression: "attribute_not_exists(PK) OR #status = :released",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: { ":released": "RELEASED" },
+        },
       });
 
       try {
@@ -99,24 +132,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         );
         console.log(`Successfully reserved inventory for items. Idempotency Key: ${resolvedIdempotencyKey}`);
       } catch (error: any) {
-        console.error("Inventory reservation failed:", error);
-        
-        // Trả về lỗi chi tiết nếu kiểm tra điều kiện thất bại (hết hàng)
-        if (error.name === "TransactionCanceledException" || error.message?.includes("ConditionalCheckFailed")) {
+        const reasons = (error?.CancellationReasons ?? []) as { Code?: string }[];
+        const onlyMarkerFailed =
+          error?.name === "TransactionCanceledException" &&
+          reasons.length === transactItems.length &&
+          reasons[reasons.length - 1]?.Code === "ConditionalCheckFailed" &&
+          reasons.slice(0, -1).every((r) => !r?.Code || r.Code === "None");
+
+        if (onlyMarkerFailed) {
+          // Retry của cùng một phiên thanh toán đang chờ — kho đã được giữ, đi tiếp tới
+          // cổng thanh toán (Stripe idempotency key bảo đảm trả về cùng Payment Intent).
+          console.log(`Reservation already exists for ${mockOrderId}, skipping duplicate inventory hold.`);
+        } else if (error.name === "TransactionCanceledException" || error.message?.includes("ConditionalCheckFailed")) {
+          console.error("Inventory reservation failed:", error);
           return jsonResponse(400, {
             message: "Một hoặc nhiều sản phẩm đã hết hàng hoặc không đủ số lượng tồn kho. Vui lòng kiểm tra lại giỏ hàng!",
             error: "InventoryConflict",
           });
+        } else {
+          console.error("Inventory reservation failed:", error);
+          return jsonResponse(500, {
+            message: "Lỗi hệ thống khi xử lý tồn kho đơn hàng.",
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
-        
-        return jsonResponse(500, {
-          message: "Lỗi hệ thống khi xử lý tồn kho đơn hàng.",
-          error: error instanceof Error ? error.message : String(error),
-        });
       }
     }
-
-    const mockOrderId = resolvedIdempotencyKey.replace("idemp_", "");
 
     // -------------------------------------------------------------
     // Momo Payment Integration
@@ -245,6 +286,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         customerAddress: customer?.address || "Unknown",
         itemsCount: items.length.toString(),
         orderId: mockOrderId,
+        idempotencyKey: resolvedIdempotencyKey,
       },
     }, {
       idempotencyKey: resolvedIdempotencyKey, // Ngăn chặn thanh toán trùng lặp tại Stripe

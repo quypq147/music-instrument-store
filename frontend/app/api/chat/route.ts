@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LexRuntimeV2Client, RecognizeTextCommand } from "@aws-sdk/client-lex-runtime-v2";
 import { ddbDocClient, TABLE_NAME } from "@/lib/dynamodb";
+import { awsRegion, awsCredentials } from "@/lib/aws-credentials";
 import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 // Khởi tạo Client cho Lex V2
 const lexClient = new LexRuntimeV2Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-  },
+  region: awsRegion,
+  credentials: awsCredentials,
 });
 
 export async function POST(req: NextRequest) {

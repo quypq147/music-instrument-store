@@ -7623,6 +7623,91 @@ var verifyMomoSignature = (payload, secretKey, accessKey) => {
   const expectedSignature = (0, import_crypto.createHmac)("sha256", secretKey).update(rawSignature).digest("hex");
   return signature === expectedSignature;
 };
+var transitionReservation = async (orderId, fromStatus, toStatus) => {
+  try {
+    await ddbDocClient.send(
+      new import_lib_dynamodb.UpdateCommand({
+        TableName: tableName,
+        Key: {
+          PK: `RESERVATION#${orderId}`,
+          SK: "METADATA"
+        },
+        UpdateExpression: "SET #status = :to, updatedAt = :now",
+        ConditionExpression: "attribute_exists(PK) AND #status = :from",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":to": toStatus,
+          ":from": fromStatus,
+          ":now": (/* @__PURE__ */ new Date()).toISOString()
+        }
+      })
+    );
+    return "transitioned";
+  } catch (err) {
+    if (err?.name !== "ConditionalCheckFailedException") {
+      throw err;
+    }
+    const marker = await ddbDocClient.send(
+      new import_lib_dynamodb.GetCommand({
+        TableName: tableName,
+        Key: {
+          PK: `RESERVATION#${orderId}`,
+          SK: "METADATA"
+        }
+      })
+    );
+    return marker.Item ? String(marker.Item.status) : "no-marker";
+  }
+};
+var getReservationItems = async (orderId) => {
+  const marker = await ddbDocClient.send(
+    new import_lib_dynamodb.GetCommand({
+      TableName: tableName,
+      Key: {
+        PK: `RESERVATION#${orderId}`,
+        SK: "METADATA"
+      }
+    })
+  );
+  return Array.isArray(marker.Item?.items) ? marker.Item?.items : void 0;
+};
+var processOrderPaymentFailure = async (orderId, paymentMethod) => {
+  if (!tableName) return;
+  console.log(`[Webhook] Processing failed/canceled payment for order: ${orderId} via ${paymentMethod}`);
+  try {
+    const outcome = await transitionReservation(orderId, "RESERVED", "RELEASED");
+    if (outcome !== "transitioned") {
+      console.log(`[Webhook] Reservation for ${orderId} is "${outcome}". Nothing to restore.`);
+      return;
+    }
+    const items = await getReservationItems(orderId);
+    if (!items || items.length === 0) {
+      console.warn(`[Webhook] Reservation marker for ${orderId} has no items. Skipping stock restore.`);
+      return;
+    }
+    for (const item of items) {
+      const productId = String(item.productId);
+      const qty = item.quantity || 1;
+      console.log(`[Webhook] Restoring stock for product ${productId} by ${qty}`);
+      await ddbDocClient.send(
+        new import_lib_dynamodb.UpdateCommand({
+          TableName: tableName,
+          Key: {
+            PK: `PRODUCT#${productId}`,
+            SK: "INVENTORY"
+          },
+          UpdateExpression: "SET stock = stock + :qty, reserved = reserved - :qty, updatedAt = :now",
+          ExpressionAttributeValues: {
+            ":qty": qty,
+            ":now": (/* @__PURE__ */ new Date()).toISOString()
+          }
+        })
+      );
+    }
+  } catch (err) {
+    console.error(`[Webhook] Failed to restore inventory for order ${orderId}:`, err);
+  }
+};
 var processOrderPaymentSuccess = async (orderId, paymentMethod, rawPayload) => {
   if (!tableName) return;
   console.log(`[Webhook] Processing successful payment for order: ${orderId} via ${paymentMethod}`);
@@ -7660,27 +7745,37 @@ var processOrderPaymentSuccess = async (orderId, paymentMethod, rawPayload) => {
       })
     );
     order = getOrderResult.Item;
-    if (order && Array.isArray(order.items)) {
-      for (const item of order.items) {
-        const productId = String(item.productId);
-        const qty = item.quantity || 1;
-        console.log(`[Webhook] Deducting reserved count for product ${productId} by ${qty}`);
-        await ddbDocClient.send(
-          new import_lib_dynamodb.UpdateCommand({
-            TableName: tableName,
-            Key: {
-              PK: `PRODUCT#${productId}`,
-              SK: "INVENTORY"
-            },
-            UpdateExpression: "SET reserved = reserved - :qty",
-            ExpressionAttributeValues: {
-              ":qty": qty
-            }
-          })
-        );
+  } catch (err) {
+    console.error(`[Webhook] Failed to load order ${orderId}:`, err);
+  }
+  try {
+    const commitOutcome = await transitionReservation(orderId, "RESERVED", "COMMITTED");
+    if (commitOutcome === "transitioned" || commitOutcome === "no-marker") {
+      const items = commitOutcome === "transitioned" ? await getReservationItems(orderId) : Array.isArray(order?.items) ? order?.items : void 0;
+      if (items && items.length > 0) {
+        for (const item of items) {
+          const productId = String(item.productId);
+          const qty = item.quantity || 1;
+          console.log(`[Webhook] Deducting reserved count for product ${productId} by ${qty}`);
+          await ddbDocClient.send(
+            new import_lib_dynamodb.UpdateCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY"
+              },
+              UpdateExpression: "SET reserved = reserved - :qty",
+              ExpressionAttributeValues: {
+                ":qty": qty
+              }
+            })
+          );
+        }
+      } else {
+        console.warn(`[Webhook] No reservation/order items found for ${orderId}. Skipping reservation release.`);
       }
     } else {
-      console.warn(`[Webhook] Order ${orderId} not found in DB or has no items. Skipping reservation release.`);
+      console.log(`[Webhook] Reservation for ${orderId} already ${commitOutcome}. Skipping duplicate release.`);
     }
   } catch (err) {
     console.error(`[Webhook] Failed to release inventory reservation for order ${orderId}:`, err);
@@ -7755,6 +7850,12 @@ var handler = async (event) => {
         if (orderId) {
           await processOrderPaymentSuccess(orderId, "Stripe", paymentIntent);
         }
+      } else if (payload.type === "payment_intent.payment_failed" || payload.type === "payment_intent.canceled") {
+        const paymentIntent = payload.data?.object;
+        const orderId = paymentIntent?.metadata?.orderId;
+        if (orderId) {
+          await processOrderPaymentFailure(orderId, "Stripe");
+        }
       }
       return jsonResponse(200, { received: true });
     }
@@ -7776,8 +7877,11 @@ var handler = async (event) => {
       const { orderId, resultCode } = payload;
       if (orderId && Number(resultCode) === 0) {
         await processOrderPaymentSuccess(orderId, "Momo", payload);
+      } else if (orderId) {
+        console.warn(`[Momo Webhook] Payment failed: orderId=${orderId}, resultCode=${resultCode}`);
+        await processOrderPaymentFailure(orderId, "Momo");
       } else {
-        console.warn(`[Momo Webhook] Payment failed or orderId missing: orderId=${orderId}, resultCode=${resultCode}`);
+        console.warn(`[Momo Webhook] orderId missing in payload, resultCode=${resultCode}`);
       }
       return jsonResponse(200, { received: true });
     }

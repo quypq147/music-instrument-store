@@ -13,17 +13,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const targetUrl = `${apiGatewayUrl}/orders`;
 
+    const authHeader = req.headers.get("Authorization");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
     const res = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
       return NextResponse.json(
-        { error: `API Gateway returned status ${res.status}` },
+        { message: errorData.message || `API Gateway returned status ${res.status}` },
         { status: res.status }
       );
     }

@@ -23,8 +23,6 @@ type CreateOrderRequest = {
   customer: OrderCustomer;
   items: OrderItem[];
   paymentMethod: string;
-  userId?: string;
-  email?: string;
   couponCode?: string;
 };
 
@@ -115,8 +113,6 @@ const parseRequest = (body: string | null): CreateOrderRequest => {
     customer: parsed.customer,
     items: parsed.items,
     paymentMethod: parsed.paymentMethod,
-    userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
-    email: typeof parsed.email === "string" ? parsed.email : undefined,
     couponCode: typeof parsed.couponCode === "string" && parsed.couponCode.trim() ? parsed.couponCode.trim() : undefined,
   };
 };
@@ -205,6 +201,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       return jsonResponse(405, { message: "Method Not Allowed" });
     }
 
+    // Danh tính lấy từ JWT do Cognito Authorizer xác minh — không tin userId/email
+    // trong body của client (chống giả mạo đơn hàng cho user khác).
+    const claims = event.requestContext.authorizer?.claims as
+      | Record<string, string>
+      | undefined;
+    const userId = claims?.sub;
+    const email = claims?.email;
+    if (!userId) {
+      return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+    }
+
     const request = parseRequest(event.body);
     const now = new Date().toISOString();
     const orderId = `ord_${Date.now()}_${randomUUID().slice(0, 8)}`;
@@ -246,8 +253,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       SK: "METADATA",
       id: orderId,
       orderNumber,
-      userId: request.userId,
-      email: request.email,
+      userId,
+      email,
       customer: request.customer,
       items: request.items,
       totalItems,

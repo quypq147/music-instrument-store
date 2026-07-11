@@ -16,6 +16,7 @@ import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as sns_subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as ses from "aws-cdk-lib/aws-ses";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 
 interface BackendProps extends cdk.StackProps {
@@ -620,10 +621,16 @@ export class BackendStack extends cdk.Stack {
     );
 
     // Route: /orders
+    // POST /orders (User - blueprint §7: đơn hàng phải gắn với người dùng đã đăng nhập,
+    // userId/email được order-api lấy từ JWT claims thay vì tin body của client)
     const ordersResource = api.root.addResource("orders");
     ordersResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(orderApiLambda)
+      new apigateway.LambdaIntegration(orderApiLambda),
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
     );
 
     // GET /orders (Admin/Staff only)
@@ -640,6 +647,16 @@ export class BackendStack extends cdk.Stack {
     const orderIdResource = ordersResource.addResource("{id}");
     orderIdResource.addMethod(
       "PUT",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // GET /orders/{id} (chủ đơn hàng hoặc Admin/Staff - blueprint §7)
+    orderIdResource.addMethod(
+      "GET",
       productApiIntegration,
       authorizer ? {
         authorizer,
@@ -833,6 +850,77 @@ export class BackendStack extends cdk.Stack {
     createLambdaErrorAlarm(orderProcessingLambda, "OrderProcessing");
     createLambdaErrorAlarm(checkoutApiLambda, "CheckoutApi");
     createLambdaErrorAlarm(paymentWebhookLambda, "PaymentWebhook");
+
+    // 10. AWS WAF cho API Gateway (blueprint §10: managed rules + rate-based rule).
+    // Web ACL của Amplify/CloudFront quản lý qua console Amplify; Web ACL này bảo vệ
+    // trực tiếp REST API ở tầng regional.
+    const apiWebAcl = new wafv2.CfnWebACL(this, "ApiWebAcl", {
+      name: "MusicStoreApiWebAcl",
+      scope: "REGIONAL",
+      defaultAction: { allow: {} },
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: "MusicStoreApiWebAcl",
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        {
+          name: "AWSManagedRulesCommonRuleSet",
+          priority: 0,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: "AWS",
+              name: "AWSManagedRulesCommonRuleSet",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "CommonRuleSet",
+            sampledRequestsEnabled: true,
+          },
+        },
+        {
+          name: "AWSManagedRulesAmazonIpReputationList",
+          priority: 1,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: "AWS",
+              name: "AWSManagedRulesAmazonIpReputationList",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "IpReputationList",
+            sampledRequestsEnabled: true,
+          },
+        },
+        {
+          name: "RateLimitPerIp",
+          priority: 2,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              // Giới hạn mỗi IP 2000 request / 5 phút — đủ rộng cho demo/workshop,
+              // vẫn chặn được bot spam và brute-force.
+              limit: 2000,
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "RateLimitPerIp",
+            sampledRequestsEnabled: true,
+          },
+        },
+      ],
+    });
+
+    new wafv2.CfnWebACLAssociation(this, "ApiWebAclAssociation", {
+      resourceArn: api.deploymentStage.stageArn,
+      webAclArn: apiWebAcl.attrArn,
+    });
   }
 }
 

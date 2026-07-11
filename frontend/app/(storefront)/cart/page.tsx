@@ -6,7 +6,7 @@ import "../../components/common/AmplifyConfig";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
-import { getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmDialogContext";
 import { useCart } from "../../context/CartContext";
@@ -228,27 +228,31 @@ export default function Cart() {
     setIsSubmitting(true);
 
     try {
-      let userId: string | undefined;
-      let email: string | undefined;
+      // Đặt hàng yêu cầu đăng nhập (blueprint §7) — backend lấy danh tính từ JWT,
+      // không còn nhận userId/email do client tự khai.
+      let idToken: string | undefined;
       try {
-        const user = await getCurrentUser();
-        userId = user.userId;
-        const attrs = await fetchUserAttributes();
-        email = attrs.email;
+        const session = await fetchAuthSession();
+        idToken = session.tokens?.idToken?.toString();
       } catch {
-        // User not logged in, treat as guest
+        // Chưa đăng nhập
+      }
+
+      if (!idToken) {
+        showToast("Vui lòng đăng nhập để đặt hàng", "warning");
+        router.push("/login");
+        return;
       }
 
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           customer,
           paymentMethod,
-          userId,
-          email,
           couponCode: appliedCouponCode || undefined,
           items: selectedCart.map((item) => ({
             productId: String(item.id),

@@ -7736,24 +7736,64 @@ var applyOrderStatusUpdate = async (targetOrderId, order, status, reason, change
   const isActivating = (order.status === "PENDING" || order.status === "Ch\u1EDD x\xE1c nh\u1EADn") && (status === "Ch\u1EDD l\u1EA5y \u0111\u01A1n" || status === "\u0110ang giao h\xE0ng");
   const isOnlinePayment = order.paymentMethod === "VNPay" || order.paymentMethod === "Momo" || order.paymentMethod === "Stripe";
   if (isActivating && isOnlinePayment && Array.isArray(order.items)) {
-    for (const item of order.items) {
-      const productId = String(item.productId);
-      const qty = Number(item.quantity || 1);
-      try {
-        await dynamoDb.send(
-          new import_lib_dynamodb.UpdateCommand({
+    let shouldRelease = true;
+    try {
+      await dynamoDb.send(
+        new import_lib_dynamodb.UpdateCommand({
+          TableName: tableName,
+          Key: {
+            PK: `RESERVATION#${targetOrderId}`,
+            SK: "METADATA"
+          },
+          UpdateExpression: "SET #status = :to, updatedAt = :now",
+          ConditionExpression: "attribute_exists(PK) AND #status = :from",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: {
+            ":to": "COMMITTED",
+            ":from": "RESERVED",
+            ":now": now
+          }
+        })
+      );
+    } catch (markerErr) {
+      if (markerErr?.name === "ConditionalCheckFailedException") {
+        const marker = await dynamoDb.send(
+          new import_lib_dynamodb.GetCommand({
             TableName: tableName,
             Key: {
-              PK: `PRODUCT#${productId}`,
-              SK: "INVENTORY"
-            },
-            UpdateExpression: "SET reserved = reserved - :qty",
-            ExpressionAttributeValues: { ":qty": qty }
+              PK: `RESERVATION#${targetOrderId}`,
+              SK: "METADATA"
+            }
           })
         );
-        console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
-      } catch (reserveErr) {
-        console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+        shouldRelease = !marker.Item;
+        if (marker.Item) {
+          console.log(`[Admin Update] Reservation for ${targetOrderId} already ${marker.Item.status}. Skipping release.`);
+        }
+      } else {
+        throw markerErr;
+      }
+    }
+    if (shouldRelease) {
+      for (const item of order.items) {
+        const productId = String(item.productId);
+        const qty = Number(item.quantity || 1);
+        try {
+          await dynamoDb.send(
+            new import_lib_dynamodb.UpdateCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY"
+              },
+              UpdateExpression: "SET reserved = reserved - :qty",
+              ExpressionAttributeValues: { ":qty": qty }
+            })
+          );
+          console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
+        } catch (reserveErr) {
+          console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+        }
       }
     }
   }
@@ -8612,6 +8652,36 @@ var handler = async (event) => {
         };
       }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       return jsonResponse(200, sortedOrders);
+    }
+    if (resource === "/orders/{id}" && method === "GET") {
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+      const result = await dynamoDb.send(
+        new import_lib_dynamodb.GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA"
+          }
+        })
+      );
+      if (!result.Item) {
+        return jsonResponse(404, { message: "Kh\xF4ng t\xECm th\u1EA5y \u0111\u01A1n h\xE0ng" });
+      }
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      const isOwner = Boolean(userId) && result.Item.userId === userId;
+      if (!isStaff && !isOwner) {
+        return jsonResponse(403, { message: "Forbidden: B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp" });
+      }
+      const stripped = stripTableKeys(result.Item);
+      return jsonResponse(200, {
+        ...stripped,
+        createdAt: result.Item.createdAt,
+        updatedAt: result.Item.updatedAt
+      });
     }
     if (resource === "/orders/{id}" && method === "PUT") {
       const groups = authorizer?.claims?.["cognito:groups"] || "";

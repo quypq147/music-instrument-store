@@ -14688,7 +14688,15 @@ var handler = async (event) => {
       0
     );
     const resolvedIdempotencyKey = idempotencyKey || `idemp_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const mockOrderId = resolvedIdempotencyKey.replace("idemp_", "");
     if (tableName) {
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const reservationItems = items.map(
+        (item) => ({
+          productId: String(item.productId),
+          quantity: item.quantity || 1
+        })
+      );
       const transactItems = items.map((item) => {
         const qty = item.quantity || 1;
         const productId = String(item.productId);
@@ -14703,10 +14711,27 @@ var handler = async (event) => {
             ConditionExpression: "stock >= :qty",
             ExpressionAttributeValues: {
               ":qty": qty,
-              ":now": (/* @__PURE__ */ new Date()).toISOString()
+              ":now": now
             }
           }
         };
+      });
+      transactItems.push({
+        Put: {
+          TableName: tableName,
+          Item: {
+            PK: `RESERVATION#${mockOrderId}`,
+            SK: "METADATA",
+            status: "RESERVED",
+            idempotencyKey: resolvedIdempotencyKey,
+            items: reservationItems,
+            createdAt: now,
+            updatedAt: now
+          },
+          ConditionExpression: "attribute_not_exists(PK) OR #status = :released",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: { ":released": "RELEASED" }
+        }
       });
       try {
         await ddbDocClient.send(
@@ -14716,20 +14741,25 @@ var handler = async (event) => {
         );
         console.log(`Successfully reserved inventory for items. Idempotency Key: ${resolvedIdempotencyKey}`);
       } catch (error) {
-        console.error("Inventory reservation failed:", error);
-        if (error.name === "TransactionCanceledException" || error.message?.includes("ConditionalCheckFailed")) {
+        const reasons = error?.CancellationReasons ?? [];
+        const onlyMarkerFailed = error?.name === "TransactionCanceledException" && reasons.length === transactItems.length && reasons[reasons.length - 1]?.Code === "ConditionalCheckFailed" && reasons.slice(0, -1).every((r) => !r?.Code || r.Code === "None");
+        if (onlyMarkerFailed) {
+          console.log(`Reservation already exists for ${mockOrderId}, skipping duplicate inventory hold.`);
+        } else if (error.name === "TransactionCanceledException" || error.message?.includes("ConditionalCheckFailed")) {
+          console.error("Inventory reservation failed:", error);
           return jsonResponse(400, {
             message: "M\u1ED9t ho\u1EB7c nhi\u1EC1u s\u1EA3n ph\u1EA9m \u0111\xE3 h\u1EBFt h\xE0ng ho\u1EB7c kh\xF4ng \u0111\u1EE7 s\u1ED1 l\u01B0\u1EE3ng t\u1ED3n kho. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i gi\u1ECF h\xE0ng!",
             error: "InventoryConflict"
           });
+        } else {
+          console.error("Inventory reservation failed:", error);
+          return jsonResponse(500, {
+            message: "L\u1ED7i h\u1EC7 th\u1ED1ng khi x\u1EED l\xFD t\u1ED3n kho \u0111\u01A1n h\xE0ng.",
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
-        return jsonResponse(500, {
-          message: "L\u1ED7i h\u1EC7 th\u1ED1ng khi x\u1EED l\xFD t\u1ED3n kho \u0111\u01A1n h\xE0ng.",
-          error: error instanceof Error ? error.message : String(error)
-        });
       }
     }
-    const mockOrderId = resolvedIdempotencyKey.replace("idemp_", "");
     if (paymentMethod === "Momo") {
       const isMockMomo = !momoPartnerCode || momoPartnerCode === "TO_BE_REPLACED_IN_CONSOLE" || momoPartnerCode.startsWith("dummy") || !momoSecretKey;
       if (isMockMomo) {
@@ -14822,7 +14852,8 @@ var handler = async (event) => {
         customerPhone: customer?.phone || "Unknown",
         customerAddress: customer?.address || "Unknown",
         itemsCount: items.length.toString(),
-        orderId: mockOrderId
+        orderId: mockOrderId,
+        idempotencyKey: resolvedIdempotencyKey
       }
     }, {
       idempotencyKey: resolvedIdempotencyKey

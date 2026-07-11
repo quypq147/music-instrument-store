@@ -7603,8 +7603,6 @@ var parseRequest = (body) => {
     customer: parsed.customer,
     items: parsed.items,
     paymentMethod: parsed.paymentMethod,
-    userId: typeof parsed.userId === "string" ? parsed.userId : void 0,
-    email: typeof parsed.email === "string" ? parsed.email : void 0,
     couponCode: typeof parsed.couponCode === "string" && parsed.couponCode.trim() ? parsed.couponCode.trim() : void 0
   };
 };
@@ -7672,6 +7670,12 @@ var handler = async (event) => {
     if (event.httpMethod !== "POST") {
       return jsonResponse(405, { message: "Method Not Allowed" });
     }
+    const claims = event.requestContext.authorizer?.claims;
+    const userId = claims?.sub;
+    const email = claims?.email;
+    if (!userId) {
+      return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+    }
     const request = parseRequest(event.body);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const orderId = `ord_${Date.now()}_${(0, import_node_crypto.randomUUID)().slice(0, 8)}`;
@@ -7707,8 +7711,8 @@ var handler = async (event) => {
       SK: "METADATA",
       id: orderId,
       orderNumber,
-      userId: request.userId,
-      email: request.email,
+      userId,
+      email,
       customer: request.customer,
       items: request.items,
       totalItems,

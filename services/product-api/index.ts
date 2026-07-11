@@ -310,24 +310,69 @@ const applyOrderStatusUpdate = async (
   const isOnlinePayment = order.paymentMethod === "VNPay" || order.paymentMethod === "Momo" || order.paymentMethod === "Stripe";
 
   if (isActivating && isOnlinePayment && Array.isArray(order.items)) {
-    for (const item of order.items) {
-      const productId = String(item.productId);
-      const qty = Number(item.quantity || 1);
-      try {
-        await dynamoDb.send(
-          new UpdateCommand({
+    // Gác bằng marker RESERVATION#<orderId> (nếu có): chỉ release khi chuyển được
+    // RESERVED -> COMMITTED, tránh trừ reserved trùng với payment-webhook.
+    let shouldRelease = true;
+    try {
+      await dynamoDb.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: {
+            PK: `RESERVATION#${targetOrderId}`,
+            SK: "METADATA",
+          },
+          UpdateExpression: "SET #status = :to, updatedAt = :now",
+          ConditionExpression: "attribute_exists(PK) AND #status = :from",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: {
+            ":to": "COMMITTED",
+            ":from": "RESERVED",
+            ":now": now,
+          },
+        })
+      );
+    } catch (markerErr: any) {
+      if (markerErr?.name === "ConditionalCheckFailedException") {
+        const marker = await dynamoDb.send(
+          new GetCommand({
             TableName: tableName,
             Key: {
-              PK: `PRODUCT#${productId}`,
-              SK: "INVENTORY",
+              PK: `RESERVATION#${targetOrderId}`,
+              SK: "METADATA",
             },
-            UpdateExpression: "SET reserved = reserved - :qty",
-            ExpressionAttributeValues: { ":qty": qty },
           })
         );
-        console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
-      } catch (reserveErr) {
-        console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+        // Đơn cũ không có marker: giữ hành vi release cũ. Marker đã COMMITTED/RELEASED:
+        // webhook xử lý rồi, bỏ qua để không trừ trùng.
+        shouldRelease = !marker.Item;
+        if (marker.Item) {
+          console.log(`[Admin Update] Reservation for ${targetOrderId} already ${marker.Item.status}. Skipping release.`);
+        }
+      } else {
+        throw markerErr;
+      }
+    }
+
+    if (shouldRelease) {
+      for (const item of order.items) {
+        const productId = String(item.productId);
+        const qty = Number(item.quantity || 1);
+        try {
+          await dynamoDb.send(
+            new UpdateCommand({
+              TableName: tableName,
+              Key: {
+                PK: `PRODUCT#${productId}`,
+                SK: "INVENTORY",
+              },
+              UpdateExpression: "SET reserved = reserved - :qty",
+              ExpressionAttributeValues: { ":qty": qty },
+            })
+          );
+          console.log(`[Admin Update] Released reserved inventory for product ${productId} by ${qty}`);
+        } catch (reserveErr) {
+          console.error(`[Admin Update] Failed to release reserved inventory for ${productId}`, reserveErr);
+        }
       }
     }
   }
@@ -1374,6 +1419,44 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       return jsonResponse(200, sortedOrders);
+    }
+
+    // -------------------------------------------------------------
+    // Route: /orders/{id} (GET - Chủ đơn hàng hoặc Admin/Staff)
+    // -------------------------------------------------------------
+    if (resource === "/orders/{id}" && method === "GET") {
+      const targetOrderId = event.pathParameters?.id;
+      if (!targetOrderId) {
+        return jsonResponse(400, { message: "Missing order ID in path" });
+      }
+
+      const result = await dynamoDb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `ORDER#${targetOrderId}`,
+            SK: "METADATA",
+          },
+        })
+      );
+
+      if (!result.Item) {
+        return jsonResponse(404, { message: "Không tìm thấy đơn hàng" });
+      }
+
+      const groups = authorizer?.claims?.["cognito:groups"] || "";
+      const isStaff = groups.includes("Admin") || groups.includes("Staff");
+      const isOwner = Boolean(userId) && result.Item.userId === userId;
+      if (!isStaff && !isOwner) {
+        return jsonResponse(403, { message: "Forbidden: Bạn không có quyền truy cập" });
+      }
+
+      const stripped = stripTableKeys(result.Item);
+      return jsonResponse(200, {
+        ...stripped,
+        createdAt: result.Item.createdAt,
+        updatedAt: result.Item.updatedAt,
+      });
     }
 
     // -------------------------------------------------------------
