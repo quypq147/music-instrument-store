@@ -63,6 +63,32 @@ export class AuthStack extends cdk.Stack {
     props.productsTable.grantWriteData(postConfirmationFn);
     this.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
 
+    // 1c'. Cognito Lambda Trigger: hợp nhất đăng nhập Google/Facebook với tài khoản email
+    // cùng địa chỉ (AdminLinkProviderForUser) để mỗi người dùng chỉ có một `sub` duy nhất —
+    // profile/đơn hàng/wishlist không bị tách đôi khi đổi cách đăng nhập.
+    const preSignUpFn = new lambda.Function(this, 'PreSignUpTriggerFunction', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset('../services/auth-pre-signup'),
+      environment: {
+        TABLE_NAME: props.productsTable.tableName,
+      },
+      // Cognito chỉ chờ trigger tối đa 5 giây; để timeout mặc định 3s dễ bị cắt giữa chừng
+      // khi phải gọi liên tiếp ListUsers + AdminCreateUser + AdminLinkProviderForUser.
+      timeout: cdk.Duration.seconds(5),
+      tracing: lambda.Tracing.ACTIVE,
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+    props.productsTable.grantWriteData(preSignUpFn);
+    this.userPool.grant(
+      preSignUpFn,
+      'cognito-idp:ListUsers',
+      'cognito-idp:AdminLinkProviderForUser',
+      'cognito-idp:AdminCreateUser',
+      'cognito-idp:AdminSetUserPassword'
+    );
+    this.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
+
     // 1d. Tạo Cognito Domain cho Hosted UI (nếu có prefix)
     if (props.cognitoDomainPrefix) {
       this.userPool.addDomain('CognitoDomain', {

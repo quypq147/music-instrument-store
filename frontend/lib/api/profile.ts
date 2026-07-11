@@ -26,3 +26,11 @@ export function updateProfile(token: string, payload: Record<string, unknown>) {
     body: payload,
   });
 }
+
+export function unlinkProvider(token: string, provider: "Google" | "Facebook") {
+  return apiFetch<{ message?: string }>("/users/profile/unlink-provider", {
+    method: "POST",
+    token,
+    body: { provider },
+  });
+}

@@ -1,9 +1,18 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { Amplify } from "aws-amplify";
 import "aws-amplify/auth/enable-oauth-listener";
-import { initAuthStorageFromPreference } from "../../lib/authStorage";
+import { signInWithRedirect } from "aws-amplify/auth";
+import { initAuthStorageFromPreference, takeOAuthRetryProvider } from "../../lib/authStorage";
+
+// Chụp lại query string NGAY khi module load, trước khi oauth listener của Amplify kịp xử
+// lý/dọn URL — cần đọc error_description mà Cognito gắn vào redirect khi PreSignUp trigger
+// chặn lần federated sign-up đầu tiên sau khi tự liên kết tài khoản (services/auth-pre-signup).
+const initialOAuthError =
+  typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("error_description") || ""
+    : "";
 
 
 if (!process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || !process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID) {
@@ -50,5 +59,21 @@ export default function AmplifyConfig({
 }: {
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    // Lần đăng nhập Google/Facebook đầu tiên của một email đã có tài khoản sẽ bị Cognito
+    // trả về lỗi chứa marker AUTO_LINKED (sau khi backend đã liên kết xong) — tự động thử
+    // đăng nhập lại đúng 1 lần, lần này sẽ vào thẳng tài khoản đã liên kết.
+    if (!initialOAuthError.includes("AUTO_LINKED")) return;
+
+    const provider = takeOAuthRetryProvider();
+    // Dọn query lỗi khỏi URL để refresh/back không kích hoạt lại luồng này.
+    window.history.replaceState({}, "", window.location.pathname);
+    if (provider) {
+      signInWithRedirect({ provider }).catch((error) => {
+        console.error("Auto retry sign-in after account linking failed:", error);
+      });
+    }
+  }, []);
+
   return <>{children}</>;
 }

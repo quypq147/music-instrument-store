@@ -106,6 +106,8 @@ export class BackendStack extends cdk.Stack {
             "cognito-idp:AdminRemoveUserFromGroup",
             "cognito-idp:ListUsersInGroup",
             "cognito-idp:ListUsers",
+            // Hủy liên kết Google/Facebook thật trong Cognito (POST /users/profile/unlink-provider)
+            "cognito-idp:AdminDisableProviderForUser",
           ],
           resources: [props.userPool.userPoolArn],
         })
@@ -523,6 +525,17 @@ export class BackendStack extends cdk.Stack {
     );
     profileResource.addMethod(
       "PUT",
+      productApiIntegration,
+      authorizer ? {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      } : undefined
+    );
+
+    // Route: /users/profile/unlink-provider (hủy liên kết Google/Facebook thật trong Cognito)
+    const unlinkProviderResource = profileResource.addResource("unlink-provider");
+    unlinkProviderResource.addMethod(
+      "POST",
       productApiIntegration,
       authorizer ? {
         authorizer,
