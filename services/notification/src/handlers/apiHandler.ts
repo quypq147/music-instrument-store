@@ -40,12 +40,23 @@ export async function handleApiEvent(event: any): Promise<APIGatewayProxyResult>
     if (type === "SMS") {
       await smsProvider.send({ to: recipient, body: message });
     } else {
-      await emailProvider.send({
+      const deliveryStatus = await emailProvider.send({
         to: recipient,
         subject: title || "Music Instrument Store Notification",
         html: `<p>${message}</p>`,
         text: message,
       });
+
+      // Email bị bỏ qua (SES chưa cấu hình / sandbox chặn người nhận) không phải là gửi thành
+      // công — phải trả lỗi để caller (vd. OTP xác minh thiết bị) không báo thành công giả.
+      if (deliveryStatus !== "SENT") {
+        return jsonResponse(502, {
+          message: "Email was not delivered: SES is not configured or the recipient is not verified",
+          recipient,
+          type: "EMAIL",
+          status: deliveryStatus,
+        });
+      }
     }
 
     return jsonResponse(200, {

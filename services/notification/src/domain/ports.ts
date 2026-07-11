@@ -1,7 +1,11 @@
 import type { EmailMessage, SmsMessage } from "./notification.entity";
 
+// "SENT" = email đã thực sự đi qua SES; "SKIPPED" = provider chủ động bỏ qua (chưa cấu hình
+// SES_FROM_EMAIL hoặc bị SES sandbox chặn) — caller cần biết để không báo thành công giả.
+export type EmailDeliveryStatus = "SENT" | "SKIPPED";
+
 export interface EmailProvider {
-  send(message: EmailMessage): Promise<void>;
+  send(message: EmailMessage): Promise<EmailDeliveryStatus>;
 }
 
 export interface SmsProvider {

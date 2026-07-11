@@ -13448,7 +13448,7 @@ SUBJECT: ${message.subject}
 TEXT: ${message.text}
 HTML: ${message.html}
 =========================================`);
-      return;
+      return "SKIPPED";
     }
     try {
       await this.client.send(
@@ -13466,6 +13466,7 @@ HTML: ${message.html}
           }
         })
       );
+      return "SENT";
     } catch (err) {
       const isVerificationError = err.name === "MessageRejected" || err.message?.includes("Email address is not verified") || err.message?.includes("not verified");
       if (isVerificationError) {
@@ -13480,7 +13481,7 @@ FROM: ${this.fromEmail}
 SUBJECT: ${message.subject}
 TEXT: ${message.text}
 =========================================`);
-        return;
+        return "SKIPPED";
       }
       throw err;
     }
@@ -13743,12 +13744,20 @@ async function handleApiEvent(event) {
     if (type === "SMS") {
       await smsProvider.send({ to: recipient, body: message });
     } else {
-      await emailProvider.send({
+      const deliveryStatus = await emailProvider.send({
         to: recipient,
         subject: title || "Music Instrument Store Notification",
         html: `<p>${message}</p>`,
         text: message
       });
+      if (deliveryStatus !== "SENT") {
+        return jsonResponse(502, {
+          message: "Email was not delivered: SES is not configured or the recipient is not verified",
+          recipient,
+          type: "EMAIL",
+          status: deliveryStatus
+        });
+      }
     }
     return jsonResponse(200, {
       message: "Notification sent",

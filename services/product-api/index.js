@@ -7664,7 +7664,8 @@ var REVIEW_IMAGE_MAX_COUNT = 3;
 var lambdaClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_lambda.LambdaClient({}));
 var notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
 var DEVICE_TRUST_WINDOW_MS = 30 * 24 * 60 * 60 * 1e3;
-var OTP_TTL_MS = 10 * 60 * 1e3;
+var OTP_TTL_MINUTES = 5;
+var OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1e3;
 var MAX_OTP_ATTEMPTS = 5;
 var generateOtpCode = () => String(Math.floor(1e5 + Math.random() * 9e5));
 var sendOtpEmail = async (email, code) => {
@@ -7677,7 +7678,7 @@ var sendOtpEmail = async (email, code) => {
       type: "EMAIL",
       recipient: email,
       title: "M\xE3 x\xE1c minh \u0111\u0103ng nh\u1EADp - Music Instrument Store",
-      message: `M\xE3 x\xE1c minh thi\u1EBFt b\u1ECB m\u1EDBi c\u1EE7a b\u1EA1n l\xE0: ${code}. M\xE3 c\xF3 hi\u1EC7u l\u1EF1c trong 10 ph\xFAt. N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u m\xE3 n\xE0y, vui l\xF2ng b\u1ECF qua email n\xE0y.`
+      message: `M\xE3 x\xE1c minh thi\u1EBFt b\u1ECB m\u1EDBi c\u1EE7a b\u1EA1n l\xE0: ${code}. M\xE3 c\xF3 hi\u1EC7u l\u1EF1c trong ${OTP_TTL_MINUTES} ph\xFAt. N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u m\xE3 n\xE0y, vui l\xF2ng b\u1ECF qua email n\xE0y.`
     })
   };
   const result = await lambdaClient.send(
@@ -7689,6 +7690,16 @@ var sendOtpEmail = async (email, code) => {
   );
   if (result.FunctionError) {
     throw new Error(`Notification Lambda returned an error: ${result.FunctionError}`);
+  }
+  const responseText = result.Payload ? Buffer.from(result.Payload).toString() : "";
+  let response;
+  try {
+    response = responseText ? JSON.parse(responseText) : void 0;
+  } catch {
+    throw new Error(`Notification Lambda returned an unparseable payload: ${responseText}`);
+  }
+  if (!response?.statusCode || response.statusCode >= 400) {
+    throw new Error(`Notification Lambda reported a failed email delivery: ${responseText}`);
   }
 };
 var jsonResponse = (statusCode, body) => ({
@@ -7993,9 +8004,12 @@ var handler = async (event) => {
       }
       if (otp.code !== code) {
         await dynamoDb.send(
-          new import_lib_dynamodb.PutCommand({
+          new import_lib_dynamodb.UpdateCommand({
             TableName: tableName,
-            Item: { ...otp, attempts: attempts + 1 }
+            Key: { PK: `USER#${userId}`, SK: "OTP" },
+            UpdateExpression: "SET attempts = if_not_exists(attempts, :zero) + :one",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: { ":zero": 0, ":one": 1 }
           })
         );
         return jsonResponse(400, { message: "M\xE3 x\xE1c minh kh\xF4ng \u0111\xFAng." });

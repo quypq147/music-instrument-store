@@ -1,7 +1,7 @@
 "use client";
 
 import "../../components/common/AmplifyConfig";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { fetchAuthSession } from "aws-amplify/auth";
@@ -23,8 +23,54 @@ function VerifyDeviceContent() {
   const { showToast } = useToast();
   const [code, setCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const redirectTarget = getSafeRedirectTarget(searchParams.get("redirect"));
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  // Gửi lại mã bằng cách gọi lại /auth/device/check: backend thấy thiết bị chưa tin cậy sẽ tự
+  // sinh OTP mới (ghi đè mã cũ trong DB) và gửi email — không cần endpoint riêng cho resend.
+  const handleResend = async () => {
+    if (isResending || resendCooldown > 0) return;
+    setIsResending(true);
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+      if (!token) throw new Error("No session token found");
+
+      const deviceId = getOrCreateDeviceId();
+      const res = await fetch("/api/auth/device/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deviceId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Không thể gửi lại mã. Vui lòng thử lại.", "error");
+        return;
+      }
+      if (data.trusted === true) {
+        // Thiết bị đã được tin cậy trong lúc chờ (vd. xác minh xong ở tab khác) — vào thẳng app.
+        window.location.href = redirectTarget;
+        return;
+      }
+
+      showToast("Đã gửi mã mới tới email của bạn.", "success");
+      setResendCooldown(60);
+    } catch (err) {
+      console.error("Resend device OTP error:", err);
+      showToast("Không thể gửi lại mã. Vui lòng thử lại.", "error");
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,12 +140,27 @@ function VerifyDeviceContent() {
           </button>
         </form>
 
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={isResending || resendCooldown > 0}
+          className="w-full mt-3 py-3 text-secondary dark:text-[#fe932c] font-bold text-xs uppercase tracking-[0.15em] border border-secondary/40 dark:border-[#fe932c]/40 rounded-sm hover:bg-secondary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isResending
+            ? "Đang gửi lại mã..."
+            : resendCooldown > 0
+              ? `Gửi lại mã sau ${resendCooldown}s`
+              : "Gửi lại mã"}
+        </button>
+
         <p className="mt-6 text-center text-xs text-gray-400 dark:text-emerald-900/40">
-          Mã hết hạn sau 10 phút.{" "}
+          Mã hết hạn sau 5 phút. Không nhận được email? Kiểm tra hộp thư rác hoặc bấm
+          &quot;Gửi lại mã&quot;.
+        </p>
+        <p className="mt-3 text-center text-sm">
           <Link href="/login" className="text-secondary dark:text-[#fe932c] font-bold">
             Quay lại đăng nhập
-          </Link>{" "}
-          để nhận mã mới nếu cần.
+          </Link>
         </p>
       </div>
     </main>

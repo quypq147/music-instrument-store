@@ -200,7 +200,9 @@ const notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
 // đến lúc refresh token hết hạn, user bắt buộc phải đăng nhập lại thật sự, và lần đó sẽ tự
 // kích hoạt lại việc kiểm tra thiết bị, nên khoảng cách tối đa giữa 2 lần xác minh luôn bị chặn.
 const DEVICE_TRUST_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const OTP_TTL_MS = 10 * 60 * 1000;
+// 5 phút: đủ cho một vòng nhận email + nhập mã, nhưng thu hẹp cửa sổ để mã bị lộ/cũ còn dùng được.
+const OTP_TTL_MINUTES = 5;
+const OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1000;
 // Giới hạn số lần nhập sai mã OTP trước khi buộc phải đăng nhập lại để nhận mã mới —
 // không có giới hạn này thì một JWT hợp lệ (đã bị đánh cắp) có thể dò hết 900.000 mã trong
 // 10 phút hiệu lực, làm mất hết tác dụng cảnh báo "thiết bị lạ" của tính năng này.
@@ -222,7 +224,7 @@ const sendOtpEmail = async (email: string, code: string): Promise<void> => {
       type: "EMAIL",
       recipient: email,
       title: "Mã xác minh đăng nhập - Music Instrument Store",
-      message: `Mã xác minh thiết bị mới của bạn là: ${code}. Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email này.`,
+      message: `Mã xác minh thiết bị mới của bạn là: ${code}. Mã có hiệu lực trong ${OTP_TTL_MINUTES} phút. Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email này.`,
     }),
   };
 
@@ -236,6 +238,20 @@ const sendOtpEmail = async (email: string, code: string): Promise<void> => {
 
   if (result.FunctionError) {
     throw new Error(`Notification Lambda returned an error: ${result.FunctionError}`);
+  }
+
+  // Handler của notification bắt lỗi bên trong và trả statusCode trong payload (không set
+  // FunctionError), nên phải đọc payload để phát hiện email thực chất KHÔNG được gửi
+  // (SES lỗi, chưa cấu hình SES_FROM_EMAIL, sandbox chặn người nhận...).
+  const responseText = result.Payload ? Buffer.from(result.Payload).toString() : "";
+  let response: { statusCode?: number } | undefined;
+  try {
+    response = responseText ? JSON.parse(responseText) : undefined;
+  } catch {
+    throw new Error(`Notification Lambda returned an unparseable payload: ${responseText}`);
+  }
+  if (!response?.statusCode || response.statusCode >= 400) {
+    throw new Error(`Notification Lambda reported a failed email delivery: ${responseText}`);
   }
 };
 
@@ -609,10 +625,15 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
 
       if (otp.code !== code) {
+        // Tăng attempts bằng atomic update (không Get-rồi-Put) để nhiều request dò mã song song
+        // không thể ghi đè bộ đếm của nhau và lách qua MAX_OTP_ATTEMPTS.
         await dynamoDb.send(
-          new PutCommand({
+          new UpdateCommand({
             TableName: tableName,
-            Item: { ...otp, attempts: attempts + 1 },
+            Key: { PK: `USER#${userId}`, SK: "OTP" },
+            UpdateExpression: "SET attempts = if_not_exists(attempts, :zero) + :one",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
           })
         );
         return jsonResponse(400, { message: "Mã xác minh không đúng." });
