@@ -7585,6 +7585,12 @@ var listGroupUserIds = async (groupName) => {
   } while (nextToken);
   return ids;
 };
+var deriveFederatedProvider = (cognitoUsername) => {
+  const username = (cognitoUsername || "").toLowerCase();
+  if (username.startsWith("google_") || username.startsWith("google")) return "Google";
+  if (username.startsWith("facebook_") || username.startsWith("facebook")) return "Facebook";
+  return null;
+};
 var listAllCognitoUsers = async () => {
   const users = [];
   if (!userPoolId) return users;
@@ -8335,6 +8341,7 @@ var handler = async (event) => {
             }
           })
         );
+        const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
         if (!result.Item) {
           return jsonResponse(200, {
             profile: {
@@ -8343,11 +8350,26 @@ var handler = async (event) => {
               name: userName !== "User" ? userName : "",
               phone: "",
               address: "",
-              avatarUrl: ""
+              avatarUrl: "",
+              googleLinked: federatedProvider === "Google",
+              googleEmail: federatedProvider === "Google" ? email || "" : "",
+              facebookLinked: federatedProvider === "Facebook",
+              facebookEmail: federatedProvider === "Facebook" ? email || "" : "",
+              authProvider: federatedProvider || "Email"
             }
           });
         }
-        return jsonResponse(200, { profile: stripTableKeys(result.Item) });
+        const profile = stripTableKeys(result.Item);
+        if (federatedProvider === "Google" && !profile.googleLinked) {
+          profile.googleLinked = true;
+          profile.googleEmail = profile.googleEmail || email || "";
+        }
+        if (federatedProvider === "Facebook" && !profile.facebookLinked) {
+          profile.facebookLinked = true;
+          profile.facebookEmail = profile.facebookEmail || email || "";
+        }
+        profile.authProvider = federatedProvider || "Email";
+        return jsonResponse(200, { profile });
       }
       if (method === "PUT") {
         if (!event.body) {
@@ -8365,6 +8387,7 @@ var handler = async (event) => {
           })
         );
         const existing = getRes.Item || {};
+        const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
         const updatedProfile = {
           userId,
           email: email || body.email || existing.email || "",
@@ -8373,10 +8396,10 @@ var handler = async (event) => {
           address: body.address ?? existing.address ?? "",
           avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
           // Bổ sung thông tin liên kết mạng xã hội
-          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
-          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
-          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
-          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
+          googleLinked: federatedProvider === "Google" ? true : body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: federatedProvider === "Facebook" ? true : body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: federatedProvider === "Google" ? body.googleEmail ?? existing.googleEmail ?? email ?? "" : body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: federatedProvider === "Facebook" ? body.facebookEmail ?? existing.facebookEmail ?? email ?? "" : body.facebookEmail ?? existing.facebookEmail ?? "",
           // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
           // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
           ...existing.role ? { role: existing.role } : {},
@@ -8392,7 +8415,7 @@ var handler = async (event) => {
             }
           })
         );
-        return jsonResponse(200, { profile: updatedProfile });
+        return jsonResponse(200, { profile: { ...updatedProfile, authProvider: federatedProvider || "Email" } });
       }
     }
     if (resource === "/users/profile/avatar-upload-url" && method === "POST") {

@@ -85,6 +85,19 @@ const listGroupUserIds = async (groupName: string): Promise<Set<string>> => {
   return ids;
 };
 
+// Suy ra nhà cung cấp đăng nhập thật (Google/Facebook) từ "cognito:username" trong JWT — user
+// đăng nhập qua Hosted UI OAuth có username dạng "Google_<id>"/"Facebook_<id>", khác với user
+// đăng ký email/password thường. Không tốn thêm lệnh gọi Cognito nào vì claim này có sẵn trong
+// token do API Gateway Authorizer xác thực.
+const deriveFederatedProvider = (
+  cognitoUsername: string | undefined
+): "Google" | "Facebook" | null => {
+  const username = (cognitoUsername || "").toLowerCase();
+  if (username.startsWith("google_") || username.startsWith("google")) return "Google";
+  if (username.startsWith("facebook_") || username.startsWith("facebook")) return "Facebook";
+  return null;
+};
+
 // Toàn bộ user trong Cognito User Pool (không chỉ user đã có PROFILE trong DynamoDB) —
 // dùng để merge vào danh sách admin, tránh trường hợp user bị "biến mất" khỏi trang
 // quản trị chỉ vì chưa từng có bản ghi PROFILE (vd. backfill chưa chạy ở môi trường này).
@@ -1008,6 +1021,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           })
         );
 
+        // Tài khoản đăng nhập qua Google/Facebook (Hosted UI OAuth) đã "liên kết" ngay từ lúc
+        // đăng nhập lần đầu — không phụ thuộc vào cờ googleLinked/facebookLinked lưu thủ công,
+        // để tab "Tài khoản liên kết" luôn phản ánh đúng nhà cung cấp thật đang dùng.
+        const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+
         if (!result.Item) {
           // Trả về profile mặc định nếu chưa khởi tạo
           return jsonResponse(200, {
@@ -1018,11 +1036,27 @@ export const handler: APIGatewayProxyHandler = async (event) => {
               phone: "",
               address: "",
               avatarUrl: "",
+              googleLinked: federatedProvider === "Google",
+              googleEmail: federatedProvider === "Google" ? email || "" : "",
+              facebookLinked: federatedProvider === "Facebook",
+              facebookEmail: federatedProvider === "Facebook" ? email || "" : "",
+              authProvider: federatedProvider || "Email",
             },
           });
         }
 
-        return jsonResponse(200, { profile: stripTableKeys(result.Item) });
+        const profile = stripTableKeys(result.Item) as UserProfile;
+        if (federatedProvider === "Google" && !profile.googleLinked) {
+          profile.googleLinked = true;
+          profile.googleEmail = profile.googleEmail || email || "";
+        }
+        if (federatedProvider === "Facebook" && !profile.facebookLinked) {
+          profile.facebookLinked = true;
+          profile.facebookEmail = profile.facebookEmail || email || "";
+        }
+        profile.authProvider = federatedProvider || "Email";
+
+        return jsonResponse(200, { profile });
       }
 
       if (method === "PUT") {
@@ -1046,6 +1080,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         );
         const existing = getRes.Item || {};
 
+        // Xem ghi chú ở route GET /users/profile: tài khoản đăng nhập qua Google/Facebook thì
+        // luôn coi là đã liên kết thật, không để 1 lần PUT cập nhật field khác (vd. avatar) vô
+        // tình ghi đè cờ liên kết về false.
+        const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+
         const updatedProfile: UserProfile = {
           userId,
           email: email || body.email || existing.email || "",
@@ -1054,10 +1093,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           address: body.address ?? existing.address ?? "",
           avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
           // Bổ sung thông tin liên kết mạng xã hội
-          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
-          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
-          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
-          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
+          googleLinked: federatedProvider === "Google" ? true : body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: federatedProvider === "Facebook" ? true : body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: federatedProvider === "Google" ? (body.googleEmail ?? existing.googleEmail ?? email ?? "") : body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: federatedProvider === "Facebook" ? (body.facebookEmail ?? existing.facebookEmail ?? email ?? "") : body.facebookEmail ?? existing.facebookEmail ?? "",
           // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
           // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
           ...(existing.role ? { role: existing.role } : {}),
@@ -1075,7 +1114,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           })
         );
 
-        return jsonResponse(200, { profile: updatedProfile });
+        // authProvider không lưu DB — luôn suy ra lại theo JWT của phiên hiện tại nên chỉ gắn
+        // vào response, không đưa vào Item ở PutCommand phía trên.
+        return jsonResponse(200, { profile: { ...updatedProfile, authProvider: federatedProvider || "Email" } });
       }
     }
 

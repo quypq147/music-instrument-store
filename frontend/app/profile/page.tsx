@@ -7,6 +7,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { Mail } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useTheme } from "../context/ThemeContext";
@@ -57,6 +58,7 @@ type UserProfile = {
   facebookLinked?: boolean;
   googleEmail?: string;
   facebookEmail?: string;
+  authProvider?: "Google" | "Facebook" | "Email";
 };
 
 type WishlistItem = {
@@ -774,7 +776,9 @@ function ProfileContent() {
                       {/* Email connection */}
                       <div className="flex items-center justify-between p-5 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-all duration-300">
                         <div className="flex items-center gap-4">
-                          <span className="text-3xl">✉️</span>
+                          <span className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#06261d] border border-slate-200 dark:border-primary-container/20 shrink-0">
+                            <Mail className="w-5 h-5 text-slate-500 dark:text-emerald-100/70" />
+                          </span>
                           <div>
                             <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Email (Tài khoản gốc)</h4>
                             <p className="text-xs text-slate-400 dark:text-emerald-100/40 mt-1">{profile?.email}</p>
@@ -789,7 +793,14 @@ function ProfileContent() {
                       {/* Google Connection */}
                       <div className="flex items-center justify-between p-5 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-all duration-300">
                         <div className="flex items-center gap-4">
-                          <span className="text-3xl">🌐</span>
+                          <span className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#06261d] border border-slate-200 dark:border-primary-container/20 shrink-0">
+                            <svg className="w-5 h-5" viewBox="0 0 24 24">
+                              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z" fill="#EA4335" />
+                            </svg>
+                          </span>
                           <div>
                             <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Google</h4>
                             {profile?.googleLinked ? (
@@ -806,15 +817,20 @@ function ProfileContent() {
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                               Đã liên kết
                             </span>
-                            <button
-                              onClick={async () => {
-                                const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Google?" });
-                                if (ok) handleToggleConnection("google", "unlink");
-                              }}
-                              className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
-                            >
-                              Hủy liên kết
-                            </button>
+                            {/* Tài khoản đang đăng nhập thật bằng Google (qua Hosted UI OAuth) thì
+                                không cho hủy liên kết bằng nút này — đó là phương thức đăng nhập
+                                chính, không phải cờ liên kết thủ công. */}
+                            {profile?.authProvider !== "Google" && (
+                              <button
+                                onClick={async () => {
+                                  const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Google?" });
+                                  if (ok) handleToggleConnection("google", "unlink");
+                                }}
+                                className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                              >
+                                Hủy liên kết
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <button
@@ -832,7 +848,11 @@ function ProfileContent() {
                       {/* Facebook Connection */}
                       <div className="flex items-center justify-between p-5 bg-slate-50 dark:bg-[#031d16] rounded-2xl border border-slate-100 dark:border-primary-container/20 transition-all duration-300">
                         <div className="flex items-center gap-4">
-                          <span className="text-3xl">👥</span>
+                          <span className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#06261d] border border-slate-200 dark:border-primary-container/20 shrink-0">
+                            <svg className="w-5 h-5 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                            </svg>
+                          </span>
                           <div>
                             <h4 className="text-sm font-bold text-slate-800 dark:text-emerald-50">Facebook</h4>
                             {profile?.facebookLinked ? (
@@ -849,15 +869,20 @@ function ProfileContent() {
                               <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
                               Đã liên kết
                             </span>
-                            <button
-                              onClick={async () => {
-                                const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Facebook?" });
-                                if (ok) handleToggleConnection("facebook", "unlink");
-                              }}
-                              className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
-                            >
-                              Hủy liên kết
-                            </button>
+                            {/* Tài khoản đang đăng nhập thật bằng Facebook (qua Hosted UI OAuth) thì
+                                không cho hủy liên kết bằng nút này — đó là phương thức đăng nhập
+                                chính, không phải cờ liên kết thủ công. */}
+                            {profile?.authProvider !== "Facebook" && (
+                              <button
+                                onClick={async () => {
+                                  const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Facebook?" });
+                                  if (ok) handleToggleConnection("facebook", "unlink");
+                                }}
+                                className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                              >
+                                Hủy liên kết
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <button

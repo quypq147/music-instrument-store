@@ -12,6 +12,7 @@ export type UserProfile = {
   facebookLinked?: boolean;
   googleEmail?: string;
   facebookEmail?: string;
+  authProvider?: "Google" | "Facebook" | "Email";
 };
 
 export function getProfile(token: string) {
