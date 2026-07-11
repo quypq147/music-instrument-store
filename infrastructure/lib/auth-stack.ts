@@ -4,6 +4,7 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export interface AuthStackProps extends cdk.StackProps {
   productsTable: dynamodb.Table;
@@ -80,12 +81,26 @@ export class AuthStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
     props.productsTable.grantWriteData(preSignUpFn);
-    this.userPool.grant(
-      preSignUpFn,
-      'cognito-idp:ListUsers',
-      'cognito-idp:AdminLinkProviderForUser',
-      'cognito-idp:AdminCreateUser',
-      'cognito-idp:AdminSetUserPassword'
+    // Không dùng this.userPool.grant(): policy đó tham chiếu ARN của pool trong khi pool
+    // lại tham chiếu Lambda (trigger) và Lambda DependsOn chính DefaultPolicy — tạo vòng
+    // phụ thuộc CloudFormation. Dựng ARN wildcard thủ công để cắt vòng (Lambda này chỉ
+    // được Cognito của chính account gọi nên phạm vi rộng hơn 1 pool là chấp nhận được).
+    preSignUpFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'cognito-idp:ListUsers',
+          'cognito-idp:AdminLinkProviderForUser',
+          'cognito-idp:AdminCreateUser',
+          'cognito-idp:AdminSetUserPassword',
+        ],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: 'cognito-idp',
+            resource: 'userpool',
+            resourceName: '*',
+          }),
+        ],
+      })
     );
     this.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
 
