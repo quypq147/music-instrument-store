@@ -5,14 +5,10 @@ import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge
 import AWSXRay from "aws-xray-sdk-core";
 
 const dynamoDb = DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID
-    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
-    : new DynamoDBClient({})
+  AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
 );
 const tableName = process.env.TABLE_NAME;
-const eventBridge = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new EventBridgeClient({}))
-  : new EventBridgeClient({});
+const eventBridge = AWSXRay.captureAWSv3Client(new EventBridgeClient({}));
 const eventBusName = process.env.EVENT_BUS_NAME;
 
 type OrderPayload = {

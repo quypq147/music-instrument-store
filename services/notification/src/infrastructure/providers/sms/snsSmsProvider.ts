@@ -8,9 +8,7 @@ import AWSXRay from "aws-xray-sdk-core";
 // mà không cần đổi use-case gọi nó.
 export class SnsSmsProvider implements SmsProvider {
   constructor(
-    private readonly client: SNSClient = process.env._X_AMZN_TRACE_ID
-      ? AWSXRay.captureAWSv3Client(new SNSClient({}))
-      : new SNSClient({})
+    private readonly client: SNSClient = AWSXRay.captureAWSv3Client(new SNSClient({}))
   ) {}
 
   async send(message: SmsMessage): Promise<void> {

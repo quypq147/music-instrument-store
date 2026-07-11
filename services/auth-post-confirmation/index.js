@@ -7548,7 +7548,7 @@ module.exports = __toCommonJS(index_exports);
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_aws_xray_sdk_core = __toESM(require_lib());
-var ddbClient = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({});
+var ddbClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}));
 var ddbDocClient = import_lib_dynamodb.DynamoDBDocumentClient.from(ddbClient);
 var tableName = process.env.TABLE_NAME || "";
 var handler = async (event) => {

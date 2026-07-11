@@ -13430,7 +13430,7 @@ module.exports = __toCommonJS(index_exports);
 var import_client_sesv2 = require("@aws-sdk/client-sesv2");
 var import_aws_xray_sdk_core = __toESM(require_lib());
 var SesEmailProvider = class {
-  constructor(fromEmail, client = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sesv2.SESv2Client({})) : new import_client_sesv2.SESv2Client({})) {
+  constructor(fromEmail, client = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sesv2.SESv2Client({}))) {
     this.fromEmail = fromEmail;
     this.client = client;
   }
@@ -13491,7 +13491,7 @@ TEXT: ${message.text}
 var import_client_sns = require("@aws-sdk/client-sns");
 var import_aws_xray_sdk_core2 = __toESM(require_lib());
 var SnsSmsProvider = class {
-  constructor(client = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core2.default.captureAWSv3Client(new import_client_sns.SNSClient({})) : new import_client_sns.SNSClient({})) {
+  constructor(client = import_aws_xray_sdk_core2.default.captureAWSv3Client(new import_client_sns.SNSClient({}))) {
     this.client = client;
   }
   client;
@@ -13565,7 +13565,7 @@ var import_aws_xray_sdk_core3 = __toESM(require_lib());
 var THIRTY_DAYS_IN_SECONDS = 60 * 60 * 24 * 30;
 var DynamoNotificationLogRepository = class {
   constructor(tableName, client = import_lib_dynamodb.DynamoDBDocumentClient.from(
-    process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core3.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({})
+    import_aws_xray_sdk_core3.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}))
   )) {
     this.tableName = tableName;
     this.client = client;

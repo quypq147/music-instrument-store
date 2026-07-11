@@ -14643,7 +14643,10 @@ var stripe_esm_node_default = Stripe;
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_crypto = require("crypto");
+var import_https = __toESM(require("https"));
 var import_aws_xray_sdk_core = __toESM(require_lib2());
+import_aws_xray_sdk_core.default.captureHTTPsGlobal(import_https.default);
+import_aws_xray_sdk_core.default.capturePromise();
 var stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
 var tableName = process.env.TABLE_NAME || "";
 var momoPartnerCode = process.env.MOMO_PARTNER_CODE || "";
@@ -14652,7 +14655,7 @@ var momoSecretKey = process.env.MOMO_SECRET_KEY || "";
 var momoApiUrl = process.env.MOMO_API_URL || "https://test-payment.momo.vn/v2/gateway/api/create";
 var momoRedirectUrl = process.env.MOMO_REDIRECT_URL || "";
 var momoIpnUrl = process.env.MOMO_IPN_URL || "";
-var ddbClient = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({});
+var ddbClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}));
 var ddbDocClient = import_lib_dynamodb.DynamoDBDocumentClient.from(ddbClient);
 var corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14762,10 +14765,20 @@ var handler = async (event) => {
         signature
       };
       console.log("Calling Momo API with payload:", JSON.stringify(momoPayload));
-      const response = await fetch(momoApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(momoPayload)
+      const response = await import_aws_xray_sdk_core.default.captureAsyncFunc("MomoApiCall", async (subsegment) => {
+        try {
+          const res = await fetch(momoApiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(momoPayload)
+          });
+          return res;
+        } catch (err) {
+          subsegment?.addError(err);
+          throw err;
+        } finally {
+          subsegment?.close();
+        }
       });
       const momoResult = await response.json();
       console.log("Momo API response:", JSON.stringify(momoResult));

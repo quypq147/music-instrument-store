@@ -7549,14 +7549,14 @@ var import_client_eventbridge = require("@aws-sdk/client-eventbridge");
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_aws_xray_sdk_core = __toESM(require_lib());
-var eventBridge = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_eventbridge.EventBridgeClient({})) : new import_client_eventbridge.EventBridgeClient({});
+var eventBridge = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_eventbridge.EventBridgeClient({}));
 var eventBusName = process.env.EVENT_BUS_NAME;
 var stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 var stripeSignatureToleranceSeconds = 300;
 var tableName = process.env.TABLE_NAME || "";
 var momoSecretKey = process.env.MOMO_SECRET_KEY || "";
 var momoAccessKey = process.env.MOMO_ACCESS_KEY || "";
-var ddbClient = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({});
+var ddbClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}));
 var ddbDocClient = import_lib_dynamodb.DynamoDBDocumentClient.from(ddbClient);
 var jsonResponse = (statusCode, body) => ({
   statusCode,

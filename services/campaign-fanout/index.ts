@@ -4,13 +4,9 @@ import { SQSClient, SendMessageBatchCommand } from "@aws-sdk/client-sqs";
 import AWSXRay from "aws-xray-sdk-core";
 
 const dynamoDb = DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID
-    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
-    : new DynamoDBClient({})
+  AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
 );
-const sqs = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new SQSClient({}))
-  : new SQSClient({});
+const sqs = AWSXRay.captureAWSv3Client(new SQSClient({}));
 const tableName = process.env.TABLE_NAME;
 const campaignQueueUrl = process.env.CAMPAIGN_QUEUE_URL;
 
@@ -32,6 +28,9 @@ export const handler = async (event: any): Promise<void> => {
   const recipients = await collectRecipients();
   console.log(`[CampaignFanOut] Tìm được ${recipients.length} khách hàng (đã loại trùng, loại opt-out)`);
 
+  // Gắn AWSTraceHeader cho từng entry để CampaignSenderFunction (consumer) nối tiếp cùng
+  // 1 X-Ray trace — SendMessageBatchCommand yêu cầu set trace header riêng theo từng message.
+  const traceHeader = process.env._X_AMZN_TRACE_ID;
   for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
     const batch = recipients.slice(i, i + BATCH_SIZE);
     await sqs.send(
@@ -40,6 +39,9 @@ export const handler = async (event: any): Promise<void> => {
         Entries: batch.map((recipient, idx) => ({
           Id: `${campaignId}-${i + idx}`,
           MessageBody: JSON.stringify({ campaignId, title, message, channel, recipient }),
+          MessageSystemAttributes: traceHeader
+            ? { AWSTraceHeader: { DataType: "String", StringValue: traceHeader } }
+            : undefined,
         })),
       })
     );

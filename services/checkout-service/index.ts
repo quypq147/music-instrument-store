@@ -3,7 +3,14 @@ import Stripe from "stripe";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { createHmac } from "crypto";
+import https from "https";
 import AWSXRay from "aws-xray-sdk-core";
+
+// Stripe SDK (Node) dùng module "https" gốc làm HTTP transport mặc định, nên patch global
+// này giúp lời gọi tới api.stripe.com tự hiện thành node riêng trên X-Ray Application Map.
+AWSXRay.captureHTTPsGlobal(https);
+AWSXRay.capturePromise();
+
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
 const tableName = process.env.TABLE_NAME || "";
 const momoPartnerCode = process.env.MOMO_PARTNER_CODE || "";
@@ -13,9 +20,7 @@ const momoApiUrl = process.env.MOMO_API_URL || "https://test-payment.momo.vn/v2/
 const momoRedirectUrl = process.env.MOMO_REDIRECT_URL || "";
 const momoIpnUrl = process.env.MOMO_IPN_URL || "";
 
-const ddbClient = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
-  : new DynamoDBClient({});
+const ddbClient = AWSXRay.captureAWSv3Client(new DynamoDBClient({}));
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 const corsHeaders = {
@@ -165,10 +170,23 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
       console.log("Calling Momo API with payload:", JSON.stringify(momoPayload));
 
-      const response = await fetch(momoApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(momoPayload)
+      // fetch() native (Node runtime, chạy trên undici) không đi qua module "https" gốc nên
+      // captureHTTPsGlobal() không bắt được — tạo subsegment thủ công để lời gọi vẫn hiện
+      // trên trace timeline thay vì biến mất hoàn toàn khỏi trace.
+      const response = await AWSXRay.captureAsyncFunc("MomoApiCall", async (subsegment) => {
+        try {
+          const res = await fetch(momoApiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(momoPayload)
+          });
+          return res;
+        } catch (err) {
+          subsegment?.addError(err as Error);
+          throw err;
+        } finally {
+          subsegment?.close();
+        }
       });
 
       const momoResult = await response.json();

@@ -7549,9 +7549,9 @@ var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_client_sqs = require("@aws-sdk/client-sqs");
 var import_aws_xray_sdk_core = __toESM(require_lib());
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({})
+  import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}))
 );
-var sqs = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sqs.SQSClient({})) : new import_client_sqs.SQSClient({});
+var sqs = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sqs.SQSClient({}));
 var tableName = process.env.TABLE_NAME;
 var campaignQueueUrl = process.env.CAMPAIGN_QUEUE_URL;
 var BATCH_SIZE = 10;
@@ -7561,6 +7561,7 @@ var handler = async (event) => {
   console.log(`[CampaignFanOut] B\u1EAFt \u0111\u1EA7u fan-out chi\u1EBFn d\u1ECBch ${campaignId} (segment=${segment})`);
   const recipients = await collectRecipients();
   console.log(`[CampaignFanOut] T\xECm \u0111\u01B0\u1EE3c ${recipients.length} kh\xE1ch h\xE0ng (\u0111\xE3 lo\u1EA1i tr\xF9ng, lo\u1EA1i opt-out)`);
+  const traceHeader = process.env._X_AMZN_TRACE_ID;
   for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
     const batch = recipients.slice(i, i + BATCH_SIZE);
     await sqs.send(
@@ -7568,7 +7569,8 @@ var handler = async (event) => {
         QueueUrl: campaignQueueUrl,
         Entries: batch.map((recipient, idx) => ({
           Id: `${campaignId}-${i + idx}`,
-          MessageBody: JSON.stringify({ campaignId, title, message, channel, recipient })
+          MessageBody: JSON.stringify({ campaignId, title, message, channel, recipient }),
+          MessageSystemAttributes: traceHeader ? { AWSTraceHeader: { DataType: "String", StringValue: traceHeader } } : void 0
         }))
       })
     );

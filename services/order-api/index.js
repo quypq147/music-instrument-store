@@ -7549,11 +7549,11 @@ var import_client_sqs = require("@aws-sdk/client-sqs");
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
 var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_aws_xray_sdk_core = __toESM(require_lib());
-var sqs = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sqs.SQSClient({})) : new import_client_sqs.SQSClient({});
+var sqs = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sqs.SQSClient({}));
 var queueUrl = process.env.ORDER_QUEUE_URL;
 var tableName = process.env.TABLE_NAME;
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({})
+  import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}))
 );
 var corsHeaders = {
   "Access-Control-Allow-Origin": process.env.CORS_ALLOW_ORIGIN ?? "*",
@@ -7720,10 +7720,12 @@ var handler = async (event) => {
       createdAt: now,
       updatedAt: now
     };
+    const traceHeader = process.env._X_AMZN_TRACE_ID;
     await sqs.send(
       new import_client_sqs.SendMessageCommand({
         QueueUrl: queueUrl,
-        MessageBody: JSON.stringify(order)
+        MessageBody: JSON.stringify(order),
+        MessageSystemAttributes: traceHeader ? { AWSTraceHeader: { DataType: "String", StringValue: traceHeader } } : void 0
       })
     );
     return jsonResponse(201, {

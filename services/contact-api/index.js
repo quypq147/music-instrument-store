@@ -7546,7 +7546,7 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var import_client_sesv2 = require("@aws-sdk/client-sesv2");
 var import_aws_xray_sdk_core = __toESM(require_lib());
-var sesClient = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sesv2.SESv2Client({})) : new import_client_sesv2.SESv2Client({});
+var sesClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_sesv2.SESv2Client({}));
 var fromEmail = process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com";
 var contactInboxEmail = process.env.CONTACT_INBOX_EMAIL || fromEmail;
 var corsHeaders = {

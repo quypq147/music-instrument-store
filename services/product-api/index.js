@@ -7556,14 +7556,14 @@ var import_client_cognito_identity_provider = require("@aws-sdk/client-cognito-i
 var import_node_crypto = require("node:crypto");
 import_aws_xray_sdk_core.default.setContextMissingStrategy("LOG_ERROR");
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({})
+  import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}))
 );
 var tableName = process.env.TABLE_NAME;
-var eventBridge = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_eventbridge.EventBridgeClient({})) : new import_client_eventbridge.EventBridgeClient({});
+var eventBridge = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_eventbridge.EventBridgeClient({}));
 var eventBusName = process.env.EVENT_BUS_NAME;
-var s3Client = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_s3.S3Client({})) : new import_client_s3.S3Client({});
+var s3Client = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_s3.S3Client({}));
 var bucketName = process.env.BUCKET_NAME;
-var cognitoClient = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_cognito_identity_provider.CognitoIdentityProviderClient({})) : new import_client_cognito_identity_provider.CognitoIdentityProviderClient({});
+var cognitoClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_cognito_identity_provider.CognitoIdentityProviderClient({}));
 var userPoolId = process.env.USER_POOL_ID;
 var listGroupUserIds = async (groupName) => {
   const ids = /* @__PURE__ */ new Set();
@@ -7648,7 +7648,7 @@ var REVIEW_IMAGE_ALLOWED_TYPES = {
 };
 var REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 var REVIEW_IMAGE_MAX_COUNT = 3;
-var lambdaClient = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_lambda.LambdaClient({})) : new import_client_lambda.LambdaClient({});
+var lambdaClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_lambda.LambdaClient({}));
 var notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
 var DEVICE_TRUST_WINDOW_MS = 30 * 24 * 60 * 60 * 1e3;
 var OTP_TTL_MS = 10 * 60 * 1e3;

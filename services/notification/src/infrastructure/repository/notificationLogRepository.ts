@@ -11,9 +11,7 @@ export class DynamoNotificationLogRepository implements NotificationLogRepositor
   constructor(
     private readonly tableName: string,
     private readonly client: DynamoDBDocumentClient = DynamoDBDocumentClient.from(
-      process.env._X_AMZN_TRACE_ID
-        ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
-        : new DynamoDBClient({})
+      AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
     )
   ) {}
 

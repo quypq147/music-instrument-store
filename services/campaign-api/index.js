@@ -7550,9 +7550,9 @@ var import_lib_dynamodb = require("@aws-sdk/lib-dynamodb");
 var import_client_eventbridge = require("@aws-sdk/client-eventbridge");
 var import_aws_xray_sdk_core = __toESM(require_lib());
 var dynamoDb = import_lib_dynamodb.DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({})) : new import_client_dynamodb.DynamoDBClient({})
+  import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_dynamodb.DynamoDBClient({}))
 );
-var eventBridge = process.env._X_AMZN_TRACE_ID ? import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_eventbridge.EventBridgeClient({})) : new import_client_eventbridge.EventBridgeClient({});
+var eventBridge = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_eventbridge.EventBridgeClient({}));
 var tableName = process.env.TABLE_NAME;
 var eventBusName = process.env.EVENT_BUS_NAME;
 var corsHeaders = {

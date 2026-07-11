@@ -6,9 +6,7 @@ import AWSXRay from "aws-xray-sdk-core";
 export class SesEmailProvider implements EmailProvider {
   constructor(
     private readonly fromEmail: string,
-    private readonly client: SESv2Client = process.env._X_AMZN_TRACE_ID
-      ? AWSXRay.captureAWSv3Client(new SESv2Client({}))
-      : new SESv2Client({})
+    private readonly client: SESv2Client = AWSXRay.captureAWSv3Client(new SESv2Client({}))
   ) {}
 
   async send(message: EmailMessage): Promise<void> {

@@ -28,15 +28,11 @@ type CreateOrderRequest = {
   couponCode?: string;
 };
 
-const sqs = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new SQSClient({}))
-  : new SQSClient({});
+const sqs = AWSXRay.captureAWSv3Client(new SQSClient({}));
 const queueUrl = process.env.ORDER_QUEUE_URL;
 const tableName = process.env.TABLE_NAME;
 const dynamoDb = DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID
-    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
-    : new DynamoDBClient({})
+  AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
 );
 
 const corsHeaders = {
@@ -264,11 +260,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       updatedAt: now,
     };
 
-    // Đẩy đơn hàng vào SQS Queue để xử lý bất đồng bộ
+    // Đẩy đơn hàng vào SQS Queue để xử lý bất đồng bộ.
+    // Gắn AWSTraceHeader để OrderProcessingFunction (consumer) nối tiếp cùng 1 X-Ray trace
+    // thay vì bắt đầu 1 trace gốc mới — captureAWSv3Client() không tự làm việc này cho SQS.
+    const traceHeader = process.env._X_AMZN_TRACE_ID;
     await sqs.send(
       new SendMessageCommand({
         QueueUrl: queueUrl,
         MessageBody: JSON.stringify(order),
+        MessageSystemAttributes: traceHeader
+          ? { AWSTraceHeader: { DataType: "String", StringValue: traceHeader } }
+          : undefined,
       })
     );
 
