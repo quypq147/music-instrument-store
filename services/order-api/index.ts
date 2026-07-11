@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-
+import AWSXRay from "aws-xray-sdk-core";
 type OrderCustomer = {
   name: string;
   phone: string;
@@ -28,10 +28,16 @@ type CreateOrderRequest = {
   couponCode?: string;
 };
 
-const sqs = new SQSClient({});
+const sqs = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new SQSClient({}))
+  : new SQSClient({});
 const queueUrl = process.env.ORDER_QUEUE_URL;
 const tableName = process.env.TABLE_NAME;
-const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const dynamoDb = DynamoDBDocumentClient.from(
+  process.env._X_AMZN_TRACE_ID
+    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+    : new DynamoDBClient({})
+);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": process.env.CORS_ALLOW_ORIGIN ?? "*",

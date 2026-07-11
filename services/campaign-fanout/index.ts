@@ -1,9 +1,16 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { SQSClient, SendMessageBatchCommand } from "@aws-sdk/client-sqs";
+import AWSXRay from "aws-xray-sdk-core";
 
-const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const sqs = new SQSClient({});
+const dynamoDb = DynamoDBDocumentClient.from(
+  process.env._X_AMZN_TRACE_ID
+    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+    : new DynamoDBClient({})
+);
+const sqs = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new SQSClient({}))
+  : new SQSClient({});
 const tableName = process.env.TABLE_NAME;
 const campaignQueueUrl = process.env.CAMPAIGN_QUEUE_URL;
 

@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { createHmac } from "crypto";
-
+import AWSXRay from "aws-xray-sdk-core";
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
 const tableName = process.env.TABLE_NAME || "";
 const momoPartnerCode = process.env.MOMO_PARTNER_CODE || "";
@@ -13,7 +13,9 @@ const momoApiUrl = process.env.MOMO_API_URL || "https://test-payment.momo.vn/v2/
 const momoRedirectUrl = process.env.MOMO_REDIRECT_URL || "";
 const momoIpnUrl = process.env.MOMO_IPN_URL || "";
 
-const ddbClient = new DynamoDBClient({});
+const ddbClient = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+  : new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 const corsHeaders = {

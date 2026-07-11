@@ -7,7 +7,11 @@ import {
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-const eventBridge = new EventBridgeClient({});
+import AWSXRay from "aws-xray-sdk-core";
+
+const eventBridge = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new EventBridgeClient({}))
+  : new EventBridgeClient({});
 const eventBusName = process.env.EVENT_BUS_NAME;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const stripeSignatureToleranceSeconds = 300;
@@ -16,7 +20,9 @@ const tableName = process.env.TABLE_NAME || "";
 const momoSecretKey = process.env.MOMO_SECRET_KEY || "";
 const momoAccessKey = process.env.MOMO_ACCESS_KEY || "";
 
-const ddbClient = new DynamoDBClient({});
+const ddbClient = process.env._X_AMZN_TRACE_ID
+  ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+  : new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 const jsonResponse = (
