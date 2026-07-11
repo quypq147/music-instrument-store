@@ -32,6 +32,15 @@ export const isOAuthConfigured = !!process.env.NEXT_PUBLIC_COGNITO_DOMAIN;
 // (cấu hình lúc `cdk deploy` AuthStack), nếu không Cognito sẽ báo redirect_mismatch.
 const defaultRedirectUrl = typeof window !== "undefined" ? `${window.location.origin}/` : "http://localhost:3000/";
 
+// Các biến NEXT_PUBLIC_OAUTH_REDIRECT_* dùng chung định dạng với CDK (infrastructure/bin/app.ts):
+// nhiều URL phân tách bằng dấu phẩy. Phải tách thành mảng — nếu đưa nguyên chuỗi có dấu phẩy làm
+// một URL, Amplify sẽ gửi redirect_uri sai và Cognito trả về redirect_mismatch. Amplify v6 tự chọn
+// URL khớp với origin đang chạy trong mảng này.
+const parseRedirectUrls = (value: string | undefined): string[] => {
+  const urls = (value || "").split(",").map((url) => url.trim()).filter(Boolean);
+  return urls.length > 0 ? urls : [defaultRedirectUrl];
+};
+
 Amplify.configure({
   Auth: {
     Cognito: {
@@ -40,10 +49,12 @@ Amplify.configure({
       ...(isOAuthConfigured ? {
         loginWith: {
           oauth: {
-            domain: process.env.NEXT_PUBLIC_COGNITO_DOMAIN!,
+            // Amplify yêu cầu domain trần (không scheme/dấu "/" cuối) — tự làm sạch để cấu hình
+            // dạng "https://xxx.auth..." trong .env không âm thầm phá vỡ luồng OAuth.
+            domain: process.env.NEXT_PUBLIC_COGNITO_DOMAIN!.replace(/^https?:\/\//, "").replace(/\/+$/, ""),
             scopes: ["email", "openid", "profile", "aws.cognito.signin.user.admin"],
-            redirectSignIn: [process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN || defaultRedirectUrl],
-            redirectSignOut: [process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT || defaultRedirectUrl],
+            redirectSignIn: parseRedirectUrls(process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN),
+            redirectSignOut: parseRedirectUrls(process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT),
             responseType: "code",
           }
         }
