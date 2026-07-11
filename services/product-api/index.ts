@@ -22,6 +22,7 @@ import {
   ListUsersInGroupCommand,
   AdminAddUserToGroupCommand,
   AdminRemoveUserFromGroupCommand,
+  AdminDisableProviderForUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { randomUUID } from "node:crypto";
 import type { UserProfile } from "@music-store/shared-types";
@@ -96,6 +97,21 @@ const deriveFederatedProvider = (
   if (username.startsWith("google_") || username.startsWith("google")) return "Google";
   if (username.startsWith("facebook_") || username.startsWith("facebook")) return "Facebook";
   return null;
+};
+
+// Trạng thái liên kết Google/Facebook thật của tài khoản, đọc từ claim `identities` trong
+// JWT — claim này liệt kê mọi identity đã được AdminLinkProviderForUser gắn vào user, kể cả
+// khi phiên hiện tại đăng nhập bằng email/password. API Gateway authorizer serialize claim
+// này thành chuỗi (có thể là JSON hoặc dạng Java-map "{providerName=Google, ...}") nên dò
+// bằng regex thay vì JSON.parse để chịu được cả hai định dạng.
+const getLinkedProvidersFromClaims = (
+  claims: Record<string, string> | undefined
+): { google: boolean; facebook: boolean } => {
+  const identities = String(claims?.identities || "");
+  return {
+    google: /providerName["'\s]*[=:]\s*["']?Google/i.test(identities),
+    facebook: /providerName["'\s]*[=:]\s*["']?Facebook/i.test(identities),
+  };
 };
 
 // Toàn bộ user trong Cognito User Pool (không chỉ user đã có PROFILE trong DynamoDB) —
@@ -1021,10 +1037,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           })
         );
 
-        // Tài khoản đăng nhập qua Google/Facebook (Hosted UI OAuth) đã "liên kết" ngay từ lúc
-        // đăng nhập lần đầu — không phụ thuộc vào cờ googleLinked/facebookLinked lưu thủ công,
-        // để tab "Tài khoản liên kết" luôn phản ánh đúng nhà cung cấp thật đang dùng.
+        // Trạng thái liên kết Google/Facebook lấy từ Cognito thật (claim `identities` — có
+        // mặt cả khi phiên hiện tại đăng nhập bằng email/password) cộng với cách đăng nhập
+        // của phiên hiện tại, không phụ thuộc cờ googleLinked/facebookLinked lưu thủ công.
         const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+        const linked = getLinkedProvidersFromClaims(authorizer?.claims);
+        const googleLinked = linked.google || federatedProvider === "Google";
+        const facebookLinked = linked.facebook || federatedProvider === "Facebook";
 
         if (!result.Item) {
           // Trả về profile mặc định nếu chưa khởi tạo
@@ -1036,21 +1055,21 @@ export const handler: APIGatewayProxyHandler = async (event) => {
               phone: "",
               address: "",
               avatarUrl: "",
-              googleLinked: federatedProvider === "Google",
-              googleEmail: federatedProvider === "Google" ? email || "" : "",
-              facebookLinked: federatedProvider === "Facebook",
-              facebookEmail: federatedProvider === "Facebook" ? email || "" : "",
+              googleLinked,
+              googleEmail: googleLinked ? email || "" : "",
+              facebookLinked,
+              facebookEmail: facebookLinked ? email || "" : "",
               authProvider: federatedProvider || "Email",
             },
           });
         }
 
         const profile = stripTableKeys(result.Item) as UserProfile;
-        if (federatedProvider === "Google" && !profile.googleLinked) {
+        if (googleLinked) {
           profile.googleLinked = true;
           profile.googleEmail = profile.googleEmail || email || "";
         }
-        if (federatedProvider === "Facebook" && !profile.facebookLinked) {
+        if (facebookLinked) {
           profile.facebookLinked = true;
           profile.facebookEmail = profile.facebookEmail || email || "";
         }
@@ -1080,10 +1099,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         );
         const existing = getRes.Item || {};
 
-        // Xem ghi chú ở route GET /users/profile: tài khoản đăng nhập qua Google/Facebook thì
-        // luôn coi là đã liên kết thật, không để 1 lần PUT cập nhật field khác (vd. avatar) vô
-        // tình ghi đè cờ liên kết về false.
+        // Xem ghi chú ở route GET /users/profile: trạng thái liên kết lấy từ Cognito thật
+        // (claim `identities` + cách đăng nhập của phiên hiện tại), không để 1 lần PUT cập
+        // nhật field khác (vd. avatar) vô tình ghi đè cờ liên kết về false.
         const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+        const linked = getLinkedProvidersFromClaims(authorizer?.claims);
+        const googleLinked = linked.google || federatedProvider === "Google";
+        const facebookLinked = linked.facebook || federatedProvider === "Facebook";
 
         const updatedProfile: UserProfile = {
           userId,
@@ -1093,10 +1115,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           address: body.address ?? existing.address ?? "",
           avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
           // Bổ sung thông tin liên kết mạng xã hội
-          googleLinked: federatedProvider === "Google" ? true : body.googleLinked ?? existing.googleLinked ?? false,
-          facebookLinked: federatedProvider === "Facebook" ? true : body.facebookLinked ?? existing.facebookLinked ?? false,
-          googleEmail: federatedProvider === "Google" ? (body.googleEmail ?? existing.googleEmail ?? email ?? "") : body.googleEmail ?? existing.googleEmail ?? "",
-          facebookEmail: federatedProvider === "Facebook" ? (body.facebookEmail ?? existing.facebookEmail ?? email ?? "") : body.facebookEmail ?? existing.facebookEmail ?? "",
+          googleLinked: googleLinked ? true : body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: facebookLinked ? true : body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: googleLinked ? (body.googleEmail ?? existing.googleEmail ?? email ?? "") : body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: facebookLinked ? (body.facebookEmail ?? existing.facebookEmail ?? email ?? "") : body.facebookEmail ?? existing.facebookEmail ?? "",
           // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
           // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
           ...(existing.role ? { role: existing.role } : {}),
@@ -1118,6 +1140,96 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         // vào response, không đưa vào Item ở PutCommand phía trên.
         return jsonResponse(200, { profile: { ...updatedProfile, authProvider: federatedProvider || "Email" } });
       }
+    }
+
+    // -------------------------------------------------------------
+    // Route: /users/profile/unlink-provider (hủy liên kết Google/Facebook thật trong Cognito)
+    // -------------------------------------------------------------
+    if (resource === "/users/profile/unlink-provider" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Chưa đăng nhập" });
+      }
+      if (!userPoolId) {
+        return jsonResponse(500, { message: "USER_POOL_ID environment variable is not set" });
+      }
+
+      const provider = event.body ? JSON.parse(event.body).provider : undefined;
+      if (provider !== "Google" && provider !== "Facebook") {
+        return jsonResponse(400, { message: "Provider không hợp lệ. Chỉ hỗ trợ Google hoặc Facebook." });
+      }
+
+      // Không cho hủy liên kết đúng provider đang dùng để đăng nhập phiên hiện tại —
+      // nếu gỡ, refresh token của phiên này thành mồ côi và user có thể tự khóa mình
+      // khỏi tài khoản (khi chưa từng đặt mật khẩu email).
+      const sessionProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+      if (sessionProvider === provider) {
+        return jsonResponse(400, {
+          message: `Bạn đang đăng nhập bằng ${provider} nên không thể hủy liên kết ${provider} trong phiên này.`,
+        });
+      }
+
+      // Đọc attribute `identities` thật từ Cognito (JSON chuẩn, không như claim đã bị
+      // API Gateway serialize) để lấy đúng id của identity cần gỡ.
+      const lookup = await cognitoClient.send(
+        new ListUsersCommand({
+          UserPoolId: userPoolId,
+          Filter: `sub = "${userId}"`,
+          Limit: 1,
+        })
+      );
+      const cognitoUser = lookup.Users?.[0];
+      const identitiesStr = cognitoUser?.Attributes?.find((attr) => attr.Name === "identities")?.Value;
+      let identity: { providerName?: string; userId?: string } | undefined;
+      try {
+        const identities = identitiesStr ? JSON.parse(identitiesStr) : [];
+        identity = (identities as Array<{ providerName?: string; userId?: string }>).find(
+          (item) => item.providerName === provider
+        );
+      } catch (parseError) {
+        console.error("Failed to parse identities attribute:", parseError);
+      }
+
+      if (!identity?.userId) {
+        return jsonResponse(404, { message: `Tài khoản chưa liên kết với ${provider}.` });
+      }
+
+      await cognitoClient.send(
+        new AdminDisableProviderForUserCommand({
+          UserPoolId: userPoolId,
+          User: {
+            ProviderName: provider,
+            ProviderAttributeName: "Cognito_Subject",
+            ProviderAttributeValue: identity.userId,
+          },
+        })
+      );
+
+      // Đồng bộ cờ hiển thị trong DynamoDB (nếu đã có profile) — trạng thái thật vẫn do
+      // Cognito quyết định, cờ này chỉ để các phiên đang mở hiển thị đúng ngay.
+      try {
+        await dynamoDb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { PK: `USER#${userId}`, SK: "PROFILE" },
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression: "SET #linked = :false, #providerEmail = :empty, updatedAt = :now",
+            ExpressionAttributeNames: {
+              "#linked": provider === "Google" ? "googleLinked" : "facebookLinked",
+              "#providerEmail": provider === "Google" ? "googleEmail" : "facebookEmail",
+            },
+            ExpressionAttributeValues: {
+              ":false": false,
+              ":empty": "",
+              ":now": new Date().toISOString(),
+            },
+          })
+        );
+      } catch (updateError) {
+        // Chưa có bản ghi PROFILE cũng không sao — GET /users/profile đọc trạng thái từ JWT.
+        console.warn("Skipping profile flag sync after unlink:", updateError);
+      }
+
+      return jsonResponse(200, { message: `Đã hủy liên kết ${provider} thành công.` });
     }
 
     // -------------------------------------------------------------

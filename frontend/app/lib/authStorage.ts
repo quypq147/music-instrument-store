@@ -37,6 +37,36 @@ export function applyRememberMePreference(rememberMe: boolean): void {
   cognitoUserPoolsTokenProvider.setKeyValueStorage(sessionStorageAdapter);
 }
 
+const OAUTH_PENDING_PROVIDER_KEY = "music-store-oauth-pending-provider";
+const OAUTH_LINK_RETRIED_KEY = "music-store-oauth-link-retried";
+
+// Gọi ngay trước mỗi lần signInWithRedirect. Backend PreSignUp trigger sẽ chặn lần
+// federated sign-up đầu tiên sau khi tự liên kết tài khoản (xem services/auth-pre-signup);
+// nhớ lại provider ở đây để AmplifyConfig có thể tự động thử đăng nhập lại đúng provider
+// khi Cognito redirect về kèm marker AUTO_LINKED trong error_description.
+export function rememberOAuthAttempt(provider: "Google" | "Facebook"): void {
+  try {
+    window.sessionStorage.setItem(OAUTH_PENDING_PROVIDER_KEY, provider);
+    window.sessionStorage.removeItem(OAUTH_LINK_RETRIED_KEY);
+  } catch {
+    // sessionStorage bị chặn (vd. chế độ riêng tư khắt khe) — bỏ qua, user chỉ phải
+    // tự bấm đăng nhập Google/Facebook lần thứ hai thay vì được retry tự động.
+  }
+}
+
+// Trả về provider cần retry (đúng 1 lần) sau khi bị PreSignUp trigger chặn để liên kết.
+export function takeOAuthRetryProvider(): "Google" | "Facebook" | null {
+  try {
+    const provider = window.sessionStorage.getItem(OAUTH_PENDING_PROVIDER_KEY);
+    if (provider !== "Google" && provider !== "Facebook") return null;
+    if (window.sessionStorage.getItem(OAUTH_LINK_RETRIED_KEY)) return null;
+    window.sessionStorage.setItem(OAUTH_LINK_RETRIED_KEY, "1");
+    return provider;
+  } catch {
+    return null;
+  }
+}
+
 // Gọi 1 lần khi app khởi động (module scope của AmplifyConfig). sessionStorage (khác với
 // token bên trong nó) sống sót qua F5/refresh trong cùng tab, nên đây là cách duy nhất để
 // một phiên "không ghi nhớ" tiếp tục đọc đúng token từ sessionStorage sau khi người dùng

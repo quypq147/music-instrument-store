@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { signUp, confirmSignUp, signInWithRedirect } from "aws-amplify/auth";
 import { useToast } from "../../context/ToastContext";
+import { rememberOAuthAttempt } from "../../lib/authStorage";
 import { User, Mail, Phone, Lock, KeyRound, Eye, EyeOff, Music, Sun, Moon } from "lucide-react";
 
 export default function Register() {
@@ -99,6 +100,7 @@ export default function Register() {
 
   const handleOAuth = async (provider: 'Google' | 'Facebook') => {
     try {
+      rememberOAuthAttempt(provider);
       await signInWithRedirect({ provider });
     } catch (error) {
       console.error(`OAuth error (${provider}):`, error);

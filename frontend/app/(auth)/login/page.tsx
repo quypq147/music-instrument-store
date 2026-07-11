@@ -9,7 +9,7 @@ import { signIn, fetchAuthSession, signInWithRedirect } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../context/ToastContext";
 import { Eye, EyeOff, Lock, ArrowRight, Music, Sun, Moon } from "lucide-react";
-import { applyRememberMePreference } from "../../lib/authStorage";
+import { applyRememberMePreference, rememberOAuthAttempt } from "../../lib/authStorage";
 import { getOrCreateDeviceId } from "../../lib/deviceId";
 
 // Fallback configuration if not initialized in the module scope
@@ -55,10 +55,28 @@ export default function Login() {
 
   const handleOAuth = async (provider: 'Google' | 'Facebook') => {
     try {
+      rememberOAuthAttempt(provider);
       await signInWithRedirect({ provider });
     } catch (error) {
       console.error(`OAuth error (${provider}):`, error);
       showToast(`Đăng nhập bằng ${provider} hiện chưa khả dụng (Chưa cấu hình OAuth). Vui lòng sử dụng email.`, "warning");
+    }
+  };
+
+  // Dịch lỗi Cognito sang thông điệp hành động được — đặc biệt hướng dẫn user từng đăng
+  // ký bằng Google/Facebook (tài khoản có sẵn nhưng chưa tự đặt mật khẩu email bao giờ).
+  const translateSignInError = (err: { name?: string; message?: string }): string => {
+    switch (err.name) {
+      case "UserNotFoundException":
+        return "Không tìm thấy tài khoản với email này. Nếu bạn từng đăng nhập bằng Google/Facebook, hãy dùng nút bên dưới; hoặc bấm \"Đăng ký ngay\" để tạo tài khoản mới.";
+      case "NotAuthorizedException":
+        return "Email hoặc mật khẩu không đúng. Nếu tài khoản được tạo bằng Google/Facebook, hãy đăng nhập bằng nút tương ứng, hoặc bấm \"Quên mật khẩu?\" để tự đặt mật khẩu cho email này.";
+      case "UserNotConfirmedException":
+        return "Tài khoản chưa xác nhận email. Vui lòng kiểm tra hộp thư để lấy mã xác nhận.";
+      case "PasswordResetRequiredException":
+        return "Tài khoản cần đặt lại mật khẩu. Vui lòng dùng chức năng \"Quên mật khẩu?\".";
+      default:
+        return err.message || "Tên đăng nhập hoặc mật khẩu không đúng!";
     }
   };
 
@@ -114,8 +132,7 @@ export default function Login() {
       router.refresh();
       window.location.href = redirectTarget;
     } catch (err) {
-      const error = err as Error;
-      showToast(error.message || "Tên đăng nhập hoặc mật khẩu không đúng!", "error");
+      showToast(translateSignInError(err as Error), "error");
     } finally {
       setIsSubmitting(false);
     }

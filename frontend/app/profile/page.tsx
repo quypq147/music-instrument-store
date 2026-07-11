@@ -11,7 +11,8 @@ import { Mail } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmDialogContext";
 import { useTheme } from "../context/ThemeContext";
-import { fetchAuthSession, getCurrentUser, updatePassword } from "aws-amplify/auth";
+import { fetchAuthSession, getCurrentUser, updatePassword, signOut, signInWithRedirect } from "aws-amplify/auth";
+import { rememberOAuthAttempt } from "../lib/authStorage";
 import AddressSelector from "../components/address/AddressSelector";
 import { OrderCard } from "../components/order/OrderCard";
 import { OrderDetailsModal } from "../components/order/OrderDetailsModal";
@@ -19,7 +20,7 @@ import type { Order } from "../../types/cart";
 import MusicLoading from "../components/common/MusicLoading";
 import { ImagePicker } from "../components/common/ImagePicker";
 import { slugify } from "../../lib/products";
-import { getProfile, updateProfile } from "../../lib/api/profile";
+import { getProfile, updateProfile, unlinkProvider } from "../../lib/api/profile";
 import { getWishlist, removeFromWishlist } from "../../lib/api/wishlist";
 
 interface DbOrderItem {
@@ -112,52 +113,54 @@ function ProfileContent() {
 
   const { theme, setThemeExplicitly } = useTheme();
 
-  // Connections states
-  const [googleEmailInput, setGoogleEmailInput] = useState("");
-  const [facebookEmailInput, setFacebookEmailInput] = useState("");
-  const [showGoogleModal, setShowGoogleModal] = useState(false);
-  const [showFacebookModal, setShowFacebookModal] = useState(false);
+  // Liên kết thật trong Cognito: đưa user qua trang đăng nhập của provider — miễn là chọn
+  // tài khoản có CÙNG email, PreSignUp trigger phía backend sẽ tự gộp identity đó vào tài
+  // khoản hiện tại (cùng sub, giữ nguyên profile/đơn hàng), không cần nhập email thủ công.
+  const handleLinkProvider = async (provider: "Google" | "Facebook") => {
+    const ok = await confirmAction({
+      message: `Bạn sẽ được chuyển sang trang đăng nhập ${provider}. Hãy chọn đúng tài khoản ${provider} dùng email "${profile?.email}" — hệ thống sẽ tự liên kết vào tài khoản hiện tại.`,
+    });
+    if (!ok) return;
 
-  const handleToggleConnection = async (
-    provider: "google" | "facebook",
-    action: "link" | "unlink",
-    emailVal?: string
-  ) => {
+    try {
+      rememberOAuthAttempt(provider);
+      // Amplify không cho signInWithRedirect khi đang có phiên đăng nhập; đăng xuất cục bộ
+      // trước rồi đi tiếp. Sau khi liên kết xong, user đăng nhập lại vào đúng tài khoản này.
+      await signOut().catch(() => {});
+      await signInWithRedirect({ provider });
+    } catch (err) {
+      console.error(`Error starting ${provider} linking:`, err);
+      showToast(`Không mở được trang đăng nhập ${provider}. Vui lòng thử lại!`, "error");
+    }
+  };
+
+  const handleUnlinkProvider = async (provider: "Google" | "Facebook") => {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
       if (!token) throw new Error("No token found");
 
-      const isLink = action === "link";
-      const payload: Record<string, boolean | string> = {};
-      if (provider === "google") {
-        payload.googleLinked = isLink;
-        payload.googleEmail = isLink ? emailVal || "" : "";
-      } else {
-        payload.facebookLinked = isLink;
-        payload.facebookEmail = isLink ? emailVal || "" : "";
-      }
-
-      const result = await updateProfile(token, payload);
-
+      const result = await unlinkProvider(token, provider);
       if (result.ok) {
-        showToast(
-          `${isLink ? "Liên kết" : "Hủy liên kết"} tài khoản ${
-            provider === "google" ? "Google" : "Facebook"
-          } thành công!`,
-          "success"
+        showToast(`Hủy liên kết tài khoản ${provider} thành công!`, "success");
+        // Cập nhật ngay trên UI — GET /users/profile có thể còn trả trạng thái cũ tới khi
+        // token của phiên hiện tại được refresh (claim identities nằm trong JWT).
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...(provider === "Google"
+                  ? { googleLinked: false, googleEmail: "" }
+                  : { facebookLinked: false, facebookEmail: "" }),
+              }
+            : prev
         );
-        setShowGoogleModal(false);
-        setShowFacebookModal(false);
-        setGoogleEmailInput("");
-        setFacebookEmailInput("");
-        fetchData();
       } else {
         showToast("Thao tác thất bại. Vui lòng thử lại!", "error");
       }
     } catch (err) {
-      console.error(`Error toggling connection for ${provider}:`, err);
-      showToast("Đã xảy ra lỗi khi cập nhật liên kết.", "error");
+      console.error(`Error unlinking ${provider}:`, err);
+      showToast("Đã xảy ra lỗi khi hủy liên kết.", "error");
     }
   };
 
@@ -769,7 +772,9 @@ function ProfileContent() {
                       Tài Khoản Liên Kết
                     </h2>
                     <p className="text-slate-600 dark:text-emerald-100/70 text-sm leading-relaxed mb-6">
-                      Liên kết tài khoản mạng xã hội của bạn để đăng nhập nhanh chóng bằng Google hoặc Facebook.
+                      Liên kết tài khoản mạng xã hội dùng <span className="font-semibold">cùng địa chỉ email</span> để
+                      đăng nhập nhanh bằng Google hoặc Facebook — vẫn là một tài khoản duy nhất, giữ nguyên
+                      đơn hàng và thông tin cá nhân.
                     </p>
 
                     <div className="space-y-6 max-w-xl">
@@ -823,8 +828,8 @@ function ProfileContent() {
                             {profile?.authProvider !== "Google" && (
                               <button
                                 onClick={async () => {
-                                  const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Google?" });
-                                  if (ok) handleToggleConnection("google", "unlink");
+                                  const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Google? Sau khi hủy, bạn sẽ không đăng nhập được bằng Google nữa (đăng nhập lại bằng Google với cùng email sẽ tự liên kết lại)." });
+                                  if (ok) handleUnlinkProvider("Google");
                                 }}
                                 className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
                               >
@@ -834,10 +839,7 @@ function ProfileContent() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => {
-                              setGoogleEmailInput(profile?.email || "");
-                              setShowGoogleModal(true);
-                            }}
+                            onClick={() => handleLinkProvider("Google")}
                             className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
                           >
                             Liên kết Google
@@ -875,8 +877,8 @@ function ProfileContent() {
                             {profile?.authProvider !== "Facebook" && (
                               <button
                                 onClick={async () => {
-                                  const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Facebook?" });
-                                  if (ok) handleToggleConnection("facebook", "unlink");
+                                  const ok = await confirmAction({ message: "Bạn có chắc chắn muốn hủy liên kết với tài khoản Facebook? Sau khi hủy, bạn sẽ không đăng nhập được bằng Facebook nữa (đăng nhập lại bằng Facebook với cùng email sẽ tự liên kết lại)." });
+                                  if (ok) handleUnlinkProvider("Facebook");
                                 }}
                                 className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
                               >
@@ -886,10 +888,7 @@ function ProfileContent() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => {
-                              setFacebookEmailInput(profile?.email || "");
-                              setShowFacebookModal(true);
-                            }}
+                            onClick={() => handleLinkProvider("Facebook")}
                             className="bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
                           >
                             Liên kết Facebook
@@ -911,86 +910,6 @@ function ProfileContent() {
         order={selectedDetailOrder}
         onClose={() => setSelectedDetailOrder(null)}
       />
-
-      {/* Google Linking Modal */}
-      {showGoogleModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#06261d] w-full max-w-sm rounded-2xl p-6 border border-slate-100 dark:border-primary-container/20">
-            <h3 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6] mb-4 text-center">Liên kết tài khoản Google</h3>
-            <p className="text-xs text-slate-500 dark:text-emerald-100/50 mb-4 text-center leading-relaxed">
-              Vui lòng nhập địa chỉ email Google/Gmail bạn muốn liên kết với tài khoản này.
-            </p>
-            <input
-              type="email"
-              required
-              value={googleEmailInput}
-              onChange={(e) => setGoogleEmailInput(e.target.value)}
-              placeholder="example@gmail.com"
-              className={inputClasses + " mb-4 text-center"}
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  if (!googleEmailInput.includes("@")) {
-                    showToast("Email không hợp lệ", "warning");
-                    return;
-                  }
-                  handleToggleConnection("google", "link", googleEmailInput);
-                }}
-                className="flex-1 bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
-              >
-                Xác nhận
-              </button>
-              <button
-                onClick={() => setShowGoogleModal(false)}
-                className="px-4 border border-gray-200 dark:border-primary-container/20 text-slate-600 dark:text-emerald-100/70 font-bold text-xs py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#031d16] transition-colors cursor-pointer"
-              >
-                Hủy
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Facebook Linking Modal */}
-      {showFacebookModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#06261d] w-full max-w-sm rounded-2xl p-6 border border-slate-100 dark:border-primary-container/20">
-            <h3 className="font-serif text-lg text-[#002B1F] dark:text-[#80bea6] mb-4 text-center">Liên kết tài khoản Facebook</h3>
-            <p className="text-xs text-slate-500 dark:text-emerald-100/50 mb-4 text-center leading-relaxed">
-              Vui lòng nhập địa chỉ email hoặc tên người dùng Facebook của bạn để liên kết.
-            </p>
-            <input
-              type="text"
-              required
-              value={facebookEmailInput}
-              onChange={(e) => setFacebookEmailInput(e.target.value)}
-              placeholder="Tên tài khoản hoặc email..."
-              className={inputClasses + " mb-4 text-center"}
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  if (!facebookEmailInput.trim()) {
-                    showToast("Vui lòng nhập thông tin liên kết", "warning");
-                    return;
-                  }
-                  handleToggleConnection("facebook", "link", facebookEmailInput);
-                }}
-                className="flex-1 bg-[#002B1F] dark:bg-secondary hover:bg-[#054030] dark:hover:bg-secondary-container text-white dark:text-[#002B1F] font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
-              >
-                Xác nhận
-              </button>
-              <button
-                onClick={() => setShowFacebookModal(false)}
-                className="px-4 border border-gray-200 dark:border-primary-container/20 text-slate-600 dark:text-emerald-100/70 font-bold text-xs py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#031d16] transition-colors cursor-pointer"
-              >
-                Hủy
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes profileTabFade {
