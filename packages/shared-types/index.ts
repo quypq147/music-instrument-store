@@ -16,5 +16,8 @@ export interface UserProfile {
   facebookLinked?: boolean;
   googleEmail?: string;
   facebookEmail?: string;
+  // Nhà cung cấp đăng nhập thật của phiên hiện tại (suy ra từ JWT, không lưu DB) — dùng để
+  // phân biệt "liên kết thật qua Hosted UI OAuth" với cờ googleLinked/facebookLinked lưu thủ công.
+  authProvider?: "Google" | "Facebook" | "Email";
   updatedAt?: string;
 }

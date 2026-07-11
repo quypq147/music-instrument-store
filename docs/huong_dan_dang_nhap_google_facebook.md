@@ -216,3 +216,18 @@ AWS Amplify v6 khi chạy redirect đăng nhập sẽ phát ra sự kiện `sign
    npm run dev:web
    ```
 4. Truy cập `http://localhost:3000/login` và nhấp chọn đăng nhập bằng Google hoặc Facebook để kiểm nghiệm.
+
+---
+
+## 🔗 Tự động hợp nhất tài khoản theo email (Account Linking)
+
+Từ branch `fix/oauth-account-auto-link`, hệ thống dùng **Cognito PreSignUp trigger** (`services/auth-pre-signup`) để đảm bảo mỗi email chỉ có **một tài khoản duy nhất (một `sub`)** dù đăng nhập bằng email/mật khẩu, Google hay Facebook:
+
+1. **Đã có tài khoản email, lần đầu đăng nhập Google/Facebook (cùng email)**: trigger gọi `AdminLinkProviderForUser` gộp identity federated vào tài khoản có sẵn → giữ nguyên profile, đơn hàng, wishlist.
+2. **Chưa có tài khoản, đăng nhập lần đầu bằng Google/Facebook**: trigger tự tạo một tài khoản native "gốc" (mật khẩu ngẫu nhiên, email đã xác thực) rồi liên kết identity federated vào. Muốn đăng nhập bằng email sau này, user chỉ cần dùng **"Quên mật khẩu"** để tự đặt mật khẩu.
+3. **Lần liên kết đầu tiên luôn bị Cognito trả về lỗi chứa marker `AUTO_LINKED_RETRY`** (hành vi bắt buộc của pattern này — phải chặn sign-up federated trùng lặp). Frontend (`AmplifyConfig.tsx`) nhận diện marker trong `error_description` và tự động gọi lại `signInWithRedirect` — người dùng không thấy gián đoạn đáng kể.
+
+Lưu ý vận hành:
+- **Phải dùng cùng email** giữa các phương thức đăng nhập thì mới tự liên kết được; email khác nhau sẽ tạo tài khoản riêng biệt.
+- Tab "Tài khoản liên kết" trong `/profile` giờ liên kết **thật** (redirect OAuth) và hủy liên kết thật (`AdminDisableProviderForUser` qua `POST /users/profile/unlink-provider`), không còn là cờ lưu trong DynamoDB.
+- Các user federated **cũ** (tạo trước khi có trigger, username dạng `google_...`) vẫn là tài khoản riêng; trigger không gộp ngược. Nếu cần, xoá user federated cũ trong Cognito Console — lần đăng nhập Google kế tiếp sẽ tự liên kết vào tài khoản email cùng địa chỉ.

@@ -1,5 +1,5 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import type { EmailProvider } from "../../../domain/ports";
+import type { EmailDeliveryStatus, EmailProvider } from "../../../domain/ports";
 import type { EmailMessage } from "../../../domain/notification.entity";
 import AWSXRay from "aws-xray-sdk-core";
 
@@ -9,7 +9,7 @@ export class SesEmailProvider implements EmailProvider {
     private readonly client: SESv2Client = AWSXRay.captureAWSv3Client(new SESv2Client({}))
   ) {}
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<EmailDeliveryStatus> {
     const isMockMode = !this.fromEmail || this.fromEmail.includes("example.com");
 
     if (isMockMode) {
@@ -22,7 +22,7 @@ SUBJECT: ${message.subject}
 TEXT: ${message.text}
 HTML: ${message.html}
 =========================================`);
-      return;
+      return "SKIPPED";
     }
 
     try {
@@ -41,6 +41,7 @@ HTML: ${message.html}
           },
         })
       );
+      return "SENT";
     } catch (err: any) {
       const isVerificationError =
         err.name === "MessageRejected" ||
@@ -59,7 +60,7 @@ FROM: ${this.fromEmail}
 SUBJECT: ${message.subject}
 TEXT: ${message.text}
 =========================================`);
-        return; // Don't throw to prevent crashing the caller workflow (e.g. login/checkout) in sandbox/dev envs
+        return "SKIPPED"; // Don't throw to prevent crashing the caller workflow (e.g. login/checkout) in sandbox/dev envs
       }
       throw err; // Re-throw other errors (like credentials, network issues)
     }

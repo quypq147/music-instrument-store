@@ -6,7 +6,7 @@ function createFakeDeps(alreadyProcessed = false) {
   const sentSms: SmsMessage[] = [];
 
   const deps: DispatcherDeps = {
-    emailProvider: { send: async (m) => { sentEmails.push(m); } },
+    emailProvider: { send: async (m) => { sentEmails.push(m); return "SENT" as const; } },
     smsProvider: { send: async (m) => { sentSms.push(m); } },
     templateRenderer: {
       renderEmail: (name, data) => ({

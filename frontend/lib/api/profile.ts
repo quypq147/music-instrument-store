@@ -12,6 +12,7 @@ export type UserProfile = {
   facebookLinked?: boolean;
   googleEmail?: string;
   facebookEmail?: string;
+  authProvider?: "Google" | "Facebook" | "Email";
 };
 
 export function getProfile(token: string) {
@@ -23,5 +24,13 @@ export function updateProfile(token: string, payload: Record<string, unknown>) {
     method: "PUT",
     token,
     body: payload,
+  });
+}
+
+export function unlinkProvider(token: string, provider: "Google" | "Facebook") {
+  return apiFetch<{ message?: string }>("/users/profile/unlink-provider", {
+    method: "POST",
+    token,
+    body: { provider },
   });
 }

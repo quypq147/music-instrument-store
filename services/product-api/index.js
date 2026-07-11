@@ -7585,6 +7585,19 @@ var listGroupUserIds = async (groupName) => {
   } while (nextToken);
   return ids;
 };
+var deriveFederatedProvider = (cognitoUsername) => {
+  const username = (cognitoUsername || "").toLowerCase();
+  if (username.startsWith("google_") || username.startsWith("google")) return "Google";
+  if (username.startsWith("facebook_") || username.startsWith("facebook")) return "Facebook";
+  return null;
+};
+var getLinkedProvidersFromClaims = (claims) => {
+  const identities = String(claims?.identities || "");
+  return {
+    google: /providerName["'\s]*[=:]\s*["']?Google/i.test(identities),
+    facebook: /providerName["'\s]*[=:]\s*["']?Facebook/i.test(identities)
+  };
+};
 var listAllCognitoUsers = async () => {
   const users = [];
   if (!userPoolId) return users;
@@ -7651,7 +7664,8 @@ var REVIEW_IMAGE_MAX_COUNT = 3;
 var lambdaClient = import_aws_xray_sdk_core.default.captureAWSv3Client(new import_client_lambda.LambdaClient({}));
 var notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
 var DEVICE_TRUST_WINDOW_MS = 30 * 24 * 60 * 60 * 1e3;
-var OTP_TTL_MS = 10 * 60 * 1e3;
+var OTP_TTL_MINUTES = 5;
+var OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1e3;
 var MAX_OTP_ATTEMPTS = 5;
 var generateOtpCode = () => String(Math.floor(1e5 + Math.random() * 9e5));
 var sendOtpEmail = async (email, code) => {
@@ -7664,7 +7678,7 @@ var sendOtpEmail = async (email, code) => {
       type: "EMAIL",
       recipient: email,
       title: "M\xE3 x\xE1c minh \u0111\u0103ng nh\u1EADp - Music Instrument Store",
-      message: `M\xE3 x\xE1c minh thi\u1EBFt b\u1ECB m\u1EDBi c\u1EE7a b\u1EA1n l\xE0: ${code}. M\xE3 c\xF3 hi\u1EC7u l\u1EF1c trong 10 ph\xFAt. N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u m\xE3 n\xE0y, vui l\xF2ng b\u1ECF qua email n\xE0y.`
+      message: `M\xE3 x\xE1c minh thi\u1EBFt b\u1ECB m\u1EDBi c\u1EE7a b\u1EA1n l\xE0: ${code}. M\xE3 c\xF3 hi\u1EC7u l\u1EF1c trong ${OTP_TTL_MINUTES} ph\xFAt. N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u m\xE3 n\xE0y, vui l\xF2ng b\u1ECF qua email n\xE0y.`
     })
   };
   const result = await lambdaClient.send(
@@ -7676,6 +7690,16 @@ var sendOtpEmail = async (email, code) => {
   );
   if (result.FunctionError) {
     throw new Error(`Notification Lambda returned an error: ${result.FunctionError}`);
+  }
+  const responseText = result.Payload ? Buffer.from(result.Payload).toString() : "";
+  let response;
+  try {
+    response = responseText ? JSON.parse(responseText) : void 0;
+  } catch {
+    throw new Error(`Notification Lambda returned an unparseable payload: ${responseText}`);
+  }
+  if (!response?.statusCode || response.statusCode >= 400) {
+    throw new Error(`Notification Lambda reported a failed email delivery: ${responseText}`);
   }
 };
 var jsonResponse = (statusCode, body) => ({
@@ -7980,9 +8004,12 @@ var handler = async (event) => {
       }
       if (otp.code !== code) {
         await dynamoDb.send(
-          new import_lib_dynamodb.PutCommand({
+          new import_lib_dynamodb.UpdateCommand({
             TableName: tableName,
-            Item: { ...otp, attempts: attempts + 1 }
+            Key: { PK: `USER#${userId}`, SK: "OTP" },
+            UpdateExpression: "SET attempts = if_not_exists(attempts, :zero) + :one",
+            ConditionExpression: "attribute_exists(PK)",
+            ExpressionAttributeValues: { ":zero": 0, ":one": 1 }
           })
         );
         return jsonResponse(400, { message: "M\xE3 x\xE1c minh kh\xF4ng \u0111\xFAng." });
@@ -8335,6 +8362,10 @@ var handler = async (event) => {
             }
           })
         );
+        const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+        const linked = getLinkedProvidersFromClaims(authorizer?.claims);
+        const googleLinked = linked.google || federatedProvider === "Google";
+        const facebookLinked = linked.facebook || federatedProvider === "Facebook";
         if (!result.Item) {
           return jsonResponse(200, {
             profile: {
@@ -8343,11 +8374,26 @@ var handler = async (event) => {
               name: userName !== "User" ? userName : "",
               phone: "",
               address: "",
-              avatarUrl: ""
+              avatarUrl: "",
+              googleLinked,
+              googleEmail: googleLinked ? email || "" : "",
+              facebookLinked,
+              facebookEmail: facebookLinked ? email || "" : "",
+              authProvider: federatedProvider || "Email"
             }
           });
         }
-        return jsonResponse(200, { profile: stripTableKeys(result.Item) });
+        const profile = stripTableKeys(result.Item);
+        if (googleLinked) {
+          profile.googleLinked = true;
+          profile.googleEmail = profile.googleEmail || email || "";
+        }
+        if (facebookLinked) {
+          profile.facebookLinked = true;
+          profile.facebookEmail = profile.facebookEmail || email || "";
+        }
+        profile.authProvider = federatedProvider || "Email";
+        return jsonResponse(200, { profile });
       }
       if (method === "PUT") {
         if (!event.body) {
@@ -8365,6 +8411,10 @@ var handler = async (event) => {
           })
         );
         const existing = getRes.Item || {};
+        const federatedProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+        const linked = getLinkedProvidersFromClaims(authorizer?.claims);
+        const googleLinked = linked.google || federatedProvider === "Google";
+        const facebookLinked = linked.facebook || federatedProvider === "Facebook";
         const updatedProfile = {
           userId,
           email: email || body.email || existing.email || "",
@@ -8373,10 +8423,10 @@ var handler = async (event) => {
           address: body.address ?? existing.address ?? "",
           avatarUrl: body.avatarUrl ?? existing.avatarUrl ?? "",
           // Bổ sung thông tin liên kết mạng xã hội
-          googleLinked: body.googleLinked ?? existing.googleLinked ?? false,
-          facebookLinked: body.facebookLinked ?? existing.facebookLinked ?? false,
-          googleEmail: body.googleEmail ?? existing.googleEmail ?? "",
-          facebookEmail: body.facebookEmail ?? existing.facebookEmail ?? "",
+          googleLinked: googleLinked ? true : body.googleLinked ?? existing.googleLinked ?? false,
+          facebookLinked: facebookLinked ? true : body.facebookLinked ?? existing.facebookLinked ?? false,
+          googleEmail: googleLinked ? body.googleEmail ?? existing.googleEmail ?? email ?? "" : body.googleEmail ?? existing.googleEmail ?? "",
+          facebookEmail: facebookLinked ? body.facebookEmail ?? existing.facebookEmail ?? email ?? "" : body.facebookEmail ?? existing.facebookEmail ?? "",
           // Chỉ giữ lại role hiện có, KHÔNG đọc từ body — route tự-phục-vụ này không được phép
           // để user tự đổi role của chính mình (chỉ route admin PUT /users/{userId} mới được).
           ...existing.role ? { role: existing.role } : {},
@@ -8392,8 +8442,79 @@ var handler = async (event) => {
             }
           })
         );
-        return jsonResponse(200, { profile: updatedProfile });
+        return jsonResponse(200, { profile: { ...updatedProfile, authProvider: federatedProvider || "Email" } });
       }
+    }
+    if (resource === "/users/profile/unlink-provider" && method === "POST") {
+      if (!userId) {
+        return jsonResponse(401, { message: "Unauthorized: Ch\u01B0a \u0111\u0103ng nh\u1EADp" });
+      }
+      if (!userPoolId) {
+        return jsonResponse(500, { message: "USER_POOL_ID environment variable is not set" });
+      }
+      const provider = event.body ? JSON.parse(event.body).provider : void 0;
+      if (provider !== "Google" && provider !== "Facebook") {
+        return jsonResponse(400, { message: "Provider kh\xF4ng h\u1EE3p l\u1EC7. Ch\u1EC9 h\u1ED7 tr\u1EE3 Google ho\u1EB7c Facebook." });
+      }
+      const sessionProvider = deriveFederatedProvider(authorizer?.claims?.["cognito:username"]);
+      if (sessionProvider === provider) {
+        return jsonResponse(400, {
+          message: `B\u1EA1n \u0111ang \u0111\u0103ng nh\u1EADp b\u1EB1ng ${provider} n\xEAn kh\xF4ng th\u1EC3 h\u1EE7y li\xEAn k\u1EBFt ${provider} trong phi\xEAn n\xE0y.`
+        });
+      }
+      const lookup = await cognitoClient.send(
+        new import_client_cognito_identity_provider.ListUsersCommand({
+          UserPoolId: userPoolId,
+          Filter: `sub = "${userId}"`,
+          Limit: 1
+        })
+      );
+      const cognitoUser = lookup.Users?.[0];
+      const identitiesStr = cognitoUser?.Attributes?.find((attr) => attr.Name === "identities")?.Value;
+      let identity;
+      try {
+        const identities = identitiesStr ? JSON.parse(identitiesStr) : [];
+        identity = identities.find(
+          (item) => item.providerName === provider
+        );
+      } catch (parseError) {
+        console.error("Failed to parse identities attribute:", parseError);
+      }
+      if (!identity?.userId) {
+        return jsonResponse(404, { message: `T\xE0i kho\u1EA3n ch\u01B0a li\xEAn k\u1EBFt v\u1EDBi ${provider}.` });
+      }
+      await cognitoClient.send(
+        new import_client_cognito_identity_provider.AdminDisableProviderForUserCommand({
+          UserPoolId: userPoolId,
+          User: {
+            ProviderName: provider,
+            ProviderAttributeName: "Cognito_Subject",
+            ProviderAttributeValue: identity.userId
+          }
+        })
+      );
+      try {
+        await dynamoDb.send(
+          new import_lib_dynamodb.UpdateCommand({
+            TableName: tableName,
+            Key: { PK: `USER#${userId}`, SK: "PROFILE" },
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression: "SET #linked = :false, #providerEmail = :empty, updatedAt = :now",
+            ExpressionAttributeNames: {
+              "#linked": provider === "Google" ? "googleLinked" : "facebookLinked",
+              "#providerEmail": provider === "Google" ? "googleEmail" : "facebookEmail"
+            },
+            ExpressionAttributeValues: {
+              ":false": false,
+              ":empty": "",
+              ":now": (/* @__PURE__ */ new Date()).toISOString()
+            }
+          })
+        );
+      } catch (updateError) {
+        console.warn("Skipping profile flag sync after unlink:", updateError);
+      }
+      return jsonResponse(200, { message: `\u0110\xE3 h\u1EE7y li\xEAn k\u1EBFt ${provider} th\xE0nh c\xF4ng.` });
     }
     if (resource === "/users/profile/avatar-upload-url" && method === "POST") {
       if (!userId) {

@@ -1,5 +1,5 @@
 import { mockClient } from "aws-sdk-client-mock";
-import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { APIGatewayProxyEvent, Context } from "aws-lambda";
 import { handler } from "../index";
 
@@ -56,13 +56,13 @@ describe("POST /auth/device/verify", () => {
         attempts: 0,
       },
     });
-    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(UpdateCommand).resolves({});
 
     const result = await handler(buildEvent(), {} as Context, () => {});
     expect(result!.statusCode).toBe(400);
   });
 
-  it("increments the attempt counter on an incorrect code", async () => {
+  it("increments the attempt counter atomically on an incorrect code", async () => {
     ddbMock.on(GetCommand).resolves({
       Item: {
         code: "999999",
@@ -70,12 +70,15 @@ describe("POST /auth/device/verify", () => {
         attempts: 2,
       },
     });
-    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(UpdateCommand).resolves({});
 
     await handler(buildEvent(), {} as Context, () => {});
 
-    const putCall = ddbMock.commandCalls(PutCommand)[0];
-    expect(putCall.args[0].input.Item?.attempts).toBe(3);
+    const updateCall = ddbMock.commandCalls(UpdateCommand)[0];
+    expect(updateCall.args[0].input.Key?.SK).toBe("OTP");
+    expect(updateCall.args[0].input.UpdateExpression).toContain("attempts");
+    // Không được ghi đè cả item (Put) — chỉ update trường attempts.
+    expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
   });
 
   it("locks out and deletes the OTP after the max number of incorrect attempts", async () => {

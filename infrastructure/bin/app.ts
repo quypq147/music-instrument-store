@@ -23,6 +23,14 @@ const loadEnvFile = (filePath: string) => {
 const envPath = path.resolve(__dirname, "../../frontend/.env.local");
 loadEnvFile(envPath);
 
+// Cho phép khai báo nhiều callback/logout URL cùng lúc (VD: vừa localhost cho dev,
+// vừa domain production) bằng cách phân tách các URL bằng dấu phẩy trong 1 biến env.
+const parseUrlList = (value: string | undefined): string[] | undefined => {
+  if (!value) return undefined;
+  const urls = value.split(",").map((url) => url.trim()).filter(Boolean);
+  return urls.length > 0 ? urls : undefined;
+};
+
 const app = new cdk.App();
 
 // Resolve the deployment environment from CDK context, defaulting to dev.
@@ -40,8 +48,8 @@ const authStack = new AuthStack(app, `MusicStoreAuthStack-${envName}`, {
   facebookClientId: process.env.FACEBOOK_CLIENT_ID,
   facebookClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
   cognitoDomainPrefix: process.env.COGNITO_DOMAIN_PREFIX,
-  callbackUrls: process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN ? [process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN] : undefined,
-  logoutUrls: process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT ? [process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT] : undefined,
+  callbackUrls: parseUrlList(process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_IN),
+  logoutUrls: parseUrlList(process.env.NEXT_PUBLIC_OAUTH_REDIRECT_SIGN_OUT),
 });
 
 new BackendStack(app, `MusicStoreBackendStack-${envName}`, {

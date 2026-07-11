@@ -1,7 +1,7 @@
 "use client";
 
 import { Amplify } from "aws-amplify";
-import "../../components/common/AmplifyConfig";
+import { isOAuthConfigured } from "../../components/common/AmplifyConfig";
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
@@ -9,7 +9,7 @@ import { signIn, fetchAuthSession, signInWithRedirect } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "../../context/ToastContext";
 import { Eye, EyeOff, Lock, ArrowRight, Music, Sun, Moon } from "lucide-react";
-import { applyRememberMePreference } from "../../lib/authStorage";
+import { applyRememberMePreference, rememberOAuthAttempt } from "../../lib/authStorage";
 import { getOrCreateDeviceId } from "../../lib/deviceId";
 
 // Fallback configuration if not initialized in the module scope
@@ -55,10 +55,28 @@ export default function Login() {
 
   const handleOAuth = async (provider: 'Google' | 'Facebook') => {
     try {
+      rememberOAuthAttempt(provider);
       await signInWithRedirect({ provider });
     } catch (error) {
       console.error(`OAuth error (${provider}):`, error);
       showToast(`Đăng nhập bằng ${provider} hiện chưa khả dụng (Chưa cấu hình OAuth). Vui lòng sử dụng email.`, "warning");
+    }
+  };
+
+  // Dịch lỗi Cognito sang thông điệp hành động được — đặc biệt hướng dẫn user từng đăng
+  // ký bằng Google/Facebook (tài khoản có sẵn nhưng chưa tự đặt mật khẩu email bao giờ).
+  const translateSignInError = (err: { name?: string; message?: string }): string => {
+    switch (err.name) {
+      case "UserNotFoundException":
+        return "Không tìm thấy tài khoản với email này. Nếu bạn từng đăng nhập bằng Google/Facebook, hãy dùng nút bên dưới; hoặc bấm \"Đăng ký ngay\" để tạo tài khoản mới.";
+      case "NotAuthorizedException":
+        return "Email hoặc mật khẩu không đúng. Nếu tài khoản được tạo bằng Google/Facebook, hãy đăng nhập bằng nút tương ứng, hoặc bấm \"Quên mật khẩu?\" để tự đặt mật khẩu cho email này.";
+      case "UserNotConfirmedException":
+        return "Tài khoản chưa xác nhận email. Vui lòng kiểm tra hộp thư để lấy mã xác nhận.";
+      case "PasswordResetRequiredException":
+        return "Tài khoản cần đặt lại mật khẩu. Vui lòng dùng chức năng \"Quên mật khẩu?\".";
+      default:
+        return err.message || "Tên đăng nhập hoặc mật khẩu không đúng!";
     }
   };
 
@@ -114,8 +132,7 @@ export default function Login() {
       router.refresh();
       window.location.href = redirectTarget;
     } catch (err) {
-      const error = err as Error;
-      showToast(error.message || "Tên đăng nhập hoặc mật khẩu không đúng!", "error");
+      showToast(translateSignInError(err as Error), "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -288,46 +305,50 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Social Separator */}
-          <div className="relative my-5 md:my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border-subtle dark:border-emerald-900/40"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white dark:bg-[#06261d] px-3 text-gray-400 dark:text-emerald-200/40 text-[10px] tracking-widest font-bold">
-                Hoặc đăng nhập bằng
-              </span>
-            </div>
-          </div>
+          {/* Social Separator + Social Options — chỉ hiện khi Cognito Hosted UI domain đã được cấu hình,
+              tránh hiện nút rồi báo lỗi "Chưa cấu hình OAuth" sau khi người dùng bấm. */}
+          {isOAuthConfigured && (
+            <>
+              <div className="relative my-5 md:my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border-subtle dark:border-emerald-900/40"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white dark:bg-[#06261d] px-3 text-gray-400 dark:text-emerald-200/40 text-[10px] tracking-widest font-bold">
+                    Hoặc đăng nhập bằng
+                  </span>
+                </div>
+              </div>
 
-          {/* Social Options */}
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 py-3 bg-white dark:bg-[#031d16] border border-border-subtle dark:border-emerald-900/40 rounded-sm cursor-pointer transition-all hover:bg-surface-cream dark:hover:bg-[#083327] hover:-translate-y-0.5 hover:shadow-sm text-xs font-semibold text-gray-700 dark:text-emerald-100/90 w-full"
-              disabled={isSubmitting}
-              onClick={() => handleOAuth('Google')}
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z" fill="#EA4335" />
-              </svg>
-              <span>Google</span>
-            </button>
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 py-3 bg-white dark:bg-[#031d16] border border-border-subtle dark:border-emerald-900/40 rounded-sm cursor-pointer transition-all hover:bg-surface-cream dark:hover:bg-[#083327] hover:-translate-y-0.5 hover:shadow-sm text-xs font-semibold text-gray-700 dark:text-emerald-100/90 w-full"
-              disabled={isSubmitting}
-              onClick={() => handleOAuth('Facebook')}
-            >
-              <svg className="w-4 h-4 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-              </svg>
-              <span>Facebook</span>
-            </button>
-          </div>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 py-3 bg-white dark:bg-[#031d16] border border-border-subtle dark:border-emerald-900/40 rounded-sm cursor-pointer transition-all hover:bg-surface-cream dark:hover:bg-[#083327] hover:-translate-y-0.5 hover:shadow-sm text-xs font-semibold text-gray-700 dark:text-emerald-100/90 w-full"
+                  disabled={isSubmitting}
+                  onClick={() => handleOAuth('Google')}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z" fill="#EA4335" />
+                  </svg>
+                  <span>Google</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 py-3 bg-white dark:bg-[#031d16] border border-border-subtle dark:border-emerald-900/40 rounded-sm cursor-pointer transition-all hover:bg-surface-cream dark:hover:bg-[#083327] hover:-translate-y-0.5 hover:shadow-sm text-xs font-semibold text-gray-700 dark:text-emerald-100/90 w-full"
+                  disabled={isSubmitting}
+                  onClick={() => handleOAuth('Facebook')}
+                >
+                  <svg className="w-4 h-4 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  </svg>
+                  <span>Facebook</span>
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Register Link */}
           <div className="mt-6 md:mt-5 text-center flex items-center justify-center gap-2 text-sm">
