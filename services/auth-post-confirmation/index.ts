@@ -2,8 +2,9 @@ import type { PostConfirmationTriggerHandler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { UserProfile } from "@music-store/shared-types";
+import AWSXRay from "aws-xray-sdk-core";
 
-const ddbClient = new DynamoDBClient({});
+const ddbClient = AWSXRay.captureAWSv3Client(new DynamoDBClient({}));
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 const tableName = process.env.TABLE_NAME || "";
 
