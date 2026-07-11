@@ -2,10 +2,13 @@ import type { SQSHandler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+import AWSXRay from "aws-xray-sdk-core";
 
-const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const dynamoDb = DynamoDBDocumentClient.from(
+  AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+);
 const tableName = process.env.TABLE_NAME;
-const eventBridge = new EventBridgeClient({});
+const eventBridge = AWSXRay.captureAWSv3Client(new EventBridgeClient({}));
 const eventBusName = process.env.EVENT_BUS_NAME;
 
 type OrderPayload = {

@@ -1,7 +1,8 @@
 import type { APIGatewayProxyHandler, APIGatewayProxyResult } from "aws-lambda";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import AWSXRay from "aws-xray-sdk-core";
 
-const sesClient = new SESv2Client({});
+const sesClient = AWSXRay.captureAWSv3Client(new SESv2Client({}));
 const fromEmail = process.env.SES_FROM_EMAIL || "no-reply@musicstore.example.com";
 const contactInboxEmail = process.env.CONTACT_INBOX_EMAIL || fromEmail;
 

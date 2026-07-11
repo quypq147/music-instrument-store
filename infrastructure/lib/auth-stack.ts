@@ -44,6 +44,7 @@ export class AuthStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('../services/auth-triggers'),
+      tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
     this.userPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
@@ -56,6 +57,7 @@ export class AuthStack extends cdk.Stack {
       environment: {
         TABLE_NAME: props.productsTable.tableName,
       },
+      tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
     props.productsTable.grantWriteData(postConfirmationFn);

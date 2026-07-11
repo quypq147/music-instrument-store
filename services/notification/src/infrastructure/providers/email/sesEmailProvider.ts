@@ -1,11 +1,12 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import type { EmailProvider } from "../../../domain/ports";
 import type { EmailMessage } from "../../../domain/notification.entity";
+import AWSXRay from "aws-xray-sdk-core";
 
 export class SesEmailProvider implements EmailProvider {
   constructor(
     private readonly fromEmail: string,
-    private readonly client: SESv2Client = new SESv2Client({})
+    private readonly client: SESv2Client = AWSXRay.captureAWSv3Client(new SESv2Client({}))
   ) {}
 
   async send(message: EmailMessage): Promise<void> {

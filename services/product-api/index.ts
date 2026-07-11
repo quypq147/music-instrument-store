@@ -50,22 +50,14 @@ type ProductItem = {
 };
 
 const dynamoDb = DynamoDBDocumentClient.from(
-  process.env._X_AMZN_TRACE_ID
-    ? AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
-    : new DynamoDBClient({})
+  AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
 );
 const tableName = process.env.TABLE_NAME;
-const eventBridge = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new EventBridgeClient({}))
-  : new EventBridgeClient({});
+const eventBridge = AWSXRay.captureAWSv3Client(new EventBridgeClient({}));
 const eventBusName = process.env.EVENT_BUS_NAME;
-const s3Client = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new S3Client({}))
-  : new S3Client({});
+const s3Client = AWSXRay.captureAWSv3Client(new S3Client({}));
 const bucketName = process.env.BUCKET_NAME;
-const cognitoClient = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new CognitoIdentityProviderClient({}))
-  : new CognitoIdentityProviderClient({});
+const cognitoClient = AWSXRay.captureAWSv3Client(new CognitoIdentityProviderClient({}));
 const userPoolId = process.env.USER_POOL_ID;
 
 // Lấy toàn bộ userId (sub) đang là thành viên của 1 Cognito Group, dùng để hiển thị
@@ -172,9 +164,7 @@ const REVIEW_IMAGE_ALLOWED_TYPES: Record<string, string> = {
 const REVIEW_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5MB/ảnh
 const REVIEW_IMAGE_MAX_COUNT = 3; // tối đa 3 ảnh/đánh giá
 
-const lambdaClient = process.env._X_AMZN_TRACE_ID
-  ? AWSXRay.captureAWSv3Client(new LambdaClient({}))
-  : new LambdaClient({});
+const lambdaClient = AWSXRay.captureAWSv3Client(new LambdaClient({}));
 const notificationFunctionName = process.env.NOTIFICATION_FUNCTION_NAME;
 
 // Ngưỡng "thiết bị quen": trùng bậc với thời hạn refresh token mặc định của Cognito (30 ngày) —

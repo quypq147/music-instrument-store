@@ -3,9 +3,12 @@ import { randomUUID } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+import AWSXRay from "aws-xray-sdk-core";
 
-const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const eventBridge = new EventBridgeClient({});
+const dynamoDb = DynamoDBDocumentClient.from(
+  AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+);
+const eventBridge = AWSXRay.captureAWSv3Client(new EventBridgeClient({}));
 const tableName = process.env.TABLE_NAME;
 const eventBusName = process.env.EVENT_BUS_NAME;
 

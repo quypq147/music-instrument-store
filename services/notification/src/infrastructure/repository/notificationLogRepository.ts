@@ -1,6 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { NotificationLogRepository } from "../../domain/ports";
+import AWSXRay from "aws-xray-sdk-core";
 
 const THIRTY_DAYS_IN_SECONDS = 60 * 60 * 24 * 30;
 
@@ -9,7 +10,9 @@ const THIRTY_DAYS_IN_SECONDS = 60 * 60 * 24 * 30;
 export class DynamoNotificationLogRepository implements NotificationLogRepository {
   constructor(
     private readonly tableName: string,
-    private readonly client: DynamoDBDocumentClient = DynamoDBDocumentClient.from(new DynamoDBClient({}))
+    private readonly client: DynamoDBDocumentClient = DynamoDBDocumentClient.from(
+      AWSXRay.captureAWSv3Client(new DynamoDBClient({}))
+    )
   ) {}
 
   async markProcessedIfNew(eventId: string, consumer: string): Promise<boolean> {
