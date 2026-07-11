@@ -29,7 +29,7 @@ export default function FloatingContacts() {
       </Link>
       {/* Zalo */}
       <Link
-        href="https://zalo.me/0912191218"
+        href="https://zalo.me/0767061830"
         target="_blank"
         rel="noopener noreferrer"
         className="w-15 h-15 bg-[#0068FF] rounded-full flex items-center justify-center text-white no-underline font-bold text-sm font-sans shadow-[0_10px_25px_rgba(0,104,255,0.3)] transition-transform hover:scale-105"

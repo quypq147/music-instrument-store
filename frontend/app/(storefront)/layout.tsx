@@ -48,10 +48,10 @@ export default function StorefrontLayout({
             <div>
               <h4 className="text-xs font-bold tracking-widest uppercase text-white mb-4">Kết Nối</h4>
               <ul className="space-y-3">
-                <li><a href="#" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">Facebook</a></li>
-                <li><a href="#" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">Zalo</a></li>
-                <li><a href="#" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">Instagram</a></li>
-                <li><a href="#" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">YouTube</a></li>
+                <li><a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">Facebook</a></li>
+                <li><a href="https://zalo.me/0767061830" target="_blank" rel="noopener noreferrer" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">Zalo</a></li>
+                <li><a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">Instagram</a></li>
+                <li><a href="https://youtube.com" target="_blank" rel="noopener noreferrer" className="text-sm text-white/70 hover:text-[#DF9E47] transition-colors">YouTube</a></li>
               </ul>
             </div>
           </div>
