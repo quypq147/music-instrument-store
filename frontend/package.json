@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@aws-amplify/auth": "^6.20.0",
@@ -21,7 +23,6 @@
     "aws-amplify": "^6.18.0",
     "lucide-react": "^1.23.0",
     "next": "^16.2.10",
-    "openai": "^6.44.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
