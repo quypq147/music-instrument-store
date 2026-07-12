@@ -29,7 +29,7 @@ Repository cũng có các thư mục ban đầu cho backend và infrastructure m
 - **Database & Storage:** Amazon DynamoDB, Amazon S3.
 - **Payment:** Stripe, Idempotency-Key, webhook validation.
 - **Messaging & Event-driven:** Amazon SQS, DLQ, Amazon EventBridge.
-- **AI/Bot:** Amazon Lex và API chatbot hiện tại dùng OpenAI API.
+- **AI/Bot:** Chatbot Amazon Lex.
 - **Security & Observability:** AWS WAF, GuardDuty, CloudWatch, CloudTrail, X-Ray, AWS Backup.
 
 ## Hiện Trạng Triển Khai
@@ -37,7 +37,7 @@ Repository cũng có các thư mục ban đầu cho backend và infrastructure m
 - Frontend: Next.js App Router, React, TypeScript, Tailwind CSS.
 - Danh mục sản phẩm: dữ liệu tĩnh và sản phẩm lưu trong local assets.
 - Giỏ hàng: quản lý bằng client-side cart context.
-- API chatbot: Next.js route handler dùng OpenAI API.
+- API chatbot: Next.js route handler dùng Amazon Lex V2.
 - Infrastructure: bộ khung AWS CDK một phần trong `infrastructure`.
 - Backend services: các thư mục placeholder trong `services`.
 - Vị trí ứng dụng: `frontend`.
@@ -87,10 +87,14 @@ cd frontend
 npm install
 ```
 
-Tạo file môi trường local khi dùng chatbot:
+Tạo file môi trường local khi dùng chatbot (Amazon Lex):
 
 ```bash
-OPENAI_API_KEY=your_openai_api_key
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+LEX_BOT_ID=your_lex_bot_id
+LEX_BOT_ALIAS_ID=your_lex_bot_alias_id
 ```
 
 Lưu tại:

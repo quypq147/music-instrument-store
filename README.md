@@ -33,7 +33,7 @@ The repository also includes backend and infrastructure folders for the target s
 - **Database & Storage:** Amazon DynamoDB, Amazon S3.
 - **Payment:** Stripe, Idempotency-Key, webhook validation.
 - **Messaging & Event-driven:** Amazon SQS, DLQ, Amazon EventBridge.
-- **AI/Bot:** Amazon Lex and the current OpenAI-powered chatbot API.
+- **AI/Bot:** Amazon Lex chatbot.
 - **Security & Observability:** AWS WAF, GuardDuty, CloudWatch, CloudTrail, X-Ray, AWS Backup.
 
 ## Current Implementation
@@ -41,7 +41,7 @@ The repository also includes backend and infrastructure folders for the target s
 - Frontend: Next.js App Router, React, TypeScript, Tailwind CSS.
 - Product catalog: static product data and local image assets.
 - Cart: client-side cart context.
-- Chatbot API: Next.js route handler using the OpenAI API.
+- Chatbot API: Next.js route handler backed by Amazon Lex V2.
 - Product API Lambda: `GET /products` and `GET /products/{id}` backed by DynamoDB SDK v3.
 - Order processing Lambda: SQS event handler that stores pending order records in DynamoDB.
 - Payment webhook Lambda: Stripe checkout completion handler that publishes `PaymentSucceeded` events to EventBridge.
@@ -101,10 +101,14 @@ Install workspace dependencies from the repository root:
 npm install
 ```
 
-Create a local environment file when using the chatbot:
+Create a local environment file when using the chatbot (Amazon Lex):
 
 ```bash
-OPENAI_API_KEY=your_openai_api_key
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+LEX_BOT_ID=your_lex_bot_id
+LEX_BOT_ALIAS_ID=your_lex_bot_alias_id
 ```
 
 Save it as:
