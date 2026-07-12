@@ -1,19 +1,10 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { addFirstProductToCart } from "./helpers";
 
 // Giai đoạn 2 của kế hoạch kiểm thử toàn bộ flow: luồng mua hàng
 // duyệt sản phẩm → thêm giỏ → giỏ hàng → modal đặt hàng (CART-01/02/03,
 // CHK-02 một phần, và guard đăng nhập của luồng đặt hàng).
 // Yêu cầu: môi trường dev có ít nhất 1 sản phẩm còn hàng.
-
-async function addFirstProductToCart(page: Page) {
-  await page.goto("/products");
-  const addButton = page
-    .getByRole("button", { name: "Thêm vào giỏ hàng" })
-    .first();
-  await expect(addButton).toBeVisible({ timeout: 15_000 });
-  await addButton.click();
-  await expect(page.getByText(/Đã thêm .* vào giỏ hàng!/)).toBeVisible();
-}
 
 test.describe("Giỏ hàng (CART-01/02/03)", () => {
   test("thêm sản phẩm vào giỏ và hiển thị đúng trong /cart", async ({

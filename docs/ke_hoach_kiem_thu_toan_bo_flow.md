@@ -121,7 +121,25 @@
 - **Dữ liệu:** seed sản phẩm bằng `scripts/seed-products.ts` / `import-products-to-dynamodb.mjs`; user test tạo bằng `scripts/create-users.ps1`.
 - **Không chạy** test thanh toán/webhook trên môi trường production.
 
-## 7. Tiêu chí hoàn thành (Definition of Done)
+## 7. Kết quả đợt kiểm thử 1 (2026-07-12)
+
+Suite E2E: 29 test trong `frontend/e2e/` — chạy bằng `npm run test:e2e` (từ thư mục `frontend`).
+
+| Nhóm | Kết quả |
+|---|---|
+| Smoke (PROD-01/02, AUTH-02 render) | ✅ 6/6 |
+| Giỏ hàng + coupon + modal đặt hàng (CART, CHK-01/02) | ✅ 8/8 |
+| Bảo vệ route/API (AUTH-06, ADM-01) | ✅ 6/6 |
+| Đăng nhập thật Cognito (AUTH-02/03) | ✅ 2/2 |
+| Đặt hàng COD end-to-end (ORD-01) | ✅ 1/1 — tạo đơn thật trong DynamoDB dev |
+| Chat Lex (CHAT-01) | ✅ 1/1 |
+| Liên hệ (CNT-01/02) | ✅ 5/6 — 1 bug hạ tầng bên dưới |
+
+**BUG-01 (mở):** Form liên hệ luôn thất bại — `contact-api` trả 500 vì **SES đang ở sandbox mode** (`ProductionAccessEnabled: false`), identity `no-reply@soniccart.dev` chưa hoàn tất verify và `support@nhomtttnmusic.vn` chưa được verify làm người nhận. Cách xử lý: verify 2 địa chỉ trong SES console (hoặc xin production access). Test tương ứng đang đánh dấu `test.fail()` — khi hạ tầng sửa xong sẽ báo "passed unexpectedly", lúc đó gỡ annotation.
+
+**Chưa phủ tự động:** AUTH-01 (đăng ký cần email OTP), AUTH-04/05 (reset mật khẩu, OAuth), CHK-04/05/06 (thanh toán Stripe + webhook), ADM-02→08 (cần tài khoản Admin test), và unit test giai đoạn 4 cho các service.
+
+## 8. Tiêu chí hoàn thành (Definition of Done)
 
 - 100% flow ưu tiên CAO có test tự động (E2E hoặc unit) và pass.
 - Các flow còn lại tối thiểu được kiểm thử thủ công và ghi kết quả vào bảng checklist.
