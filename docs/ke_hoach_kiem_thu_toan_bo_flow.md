@@ -137,7 +137,23 @@ Suite E2E: 29 test trong `frontend/e2e/` — chạy bằng `npm run test:e2e` (t
 
 **BUG-01 (mở):** Form liên hệ luôn thất bại — `contact-api` trả 500 vì **SES đang ở sandbox mode** (`ProductionAccessEnabled: false`), identity `no-reply@soniccart.dev` chưa hoàn tất verify và `support@nhomtttnmusic.vn` chưa được verify làm người nhận. Cách xử lý: verify 2 địa chỉ trong SES console (hoặc xin production access). Test tương ứng đang đánh dấu `test.fail()` — khi hạ tầng sửa xong sẽ báo "passed unexpectedly", lúc đó gỡ annotation.
 
-**Chưa phủ tự động:** AUTH-01 (đăng ký cần email OTP), AUTH-04/05 (reset mật khẩu, OAuth), CHK-04/05/06 (thanh toán Stripe + webhook), ADM-02→08 (cần tài khoản Admin test), và unit test giai đoạn 4 cho các service.
+### Giai đoạn 4 — Unit test services (hoàn thành 2026-07-12)
+
+11/11 service có test, tổng **105 test pass**. Chạy toàn bộ: `npm run test:services` (root).
+
+| Service | Test | Phủ chính |
+|---|---|---|
+| payment-webhook | 11 | Verify chữ ký Stripe (sai/replay/base64), commit & hoàn kho idempotent, PaymentSucceeded, Momo (CHK-05) |
+| order-api | 13 | JWT 401, chống giả mạo userId, coupon (hết hạn/minOrder/race usageLimit), đẩy SQS (CHK-03) |
+| checkout-service | 10 | Giữ chỗ tồn kho atomic + marker, idempotency retry, InventoryConflict, mock Stripe/Momo (CHK-03) |
+| contact-api | 8 | Validate, SES đúng from/inbox/reply-to, tái hiện lỗi 500 khi SES từ chối (BUG-01) |
+| order-processing | 5 | Lưu đơn + GSI, COD trừ kho atomic, hết hàng → DLQ, OrderPlaced (CHK-06) |
+| campaign-api | 7 | Phân quyền Admin/Staff 403, tạo campaign QUEUED + CampaignRequested (ADM-07) |
+| campaign-fanout | 4 | Loại trùng/opt-out, batch 10 theo giới hạn SQS, phân trang scan (ADM-07) |
+| auth-triggers | 5 | Template email OTP SignUp/ForgotPassword/ResendCode (AUTH-01/04) |
+| product-api, notification, auth-pre-signup, auth-post-confirmation | 42 | (đã có từ trước, vẫn pass) |
+
+**Chưa phủ tự động (cần điều kiện ngoài):** AUTH-01/04 E2E (cần đọc email OTP thật), AUTH-05 (OAuth bên thứ ba), CHK-04 (UI thanh toán Stripe thật — logic backend đã phủ bằng unit), ADM-02→08 E2E (cần tài khoản Admin test).
 
 ## 8. Tiêu chí hoàn thành (Definition of Done)
 

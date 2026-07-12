@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "echo \"order-api has no build step yet\"",
-    "test": "echo \"No tests configured for order-api\""
+    "test": "jest"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1075.0",
@@ -13,6 +13,11 @@
     "@aws-sdk/client-sqs": "^3.1075.0"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.152"
+    "@types/aws-lambda": "^8.10.152",
+    "@types/jest": "^29.5.14",
+    "aws-sdk-client-mock": "^4.1.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.11",
+    "typescript": "~5.3.3"
   }
 }
