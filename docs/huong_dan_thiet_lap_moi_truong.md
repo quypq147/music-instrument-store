@@ -68,7 +68,7 @@ Nếu bạn phát triển các tính năng AWS hoặc muốn test trên AWS Sand
    - Tự động chạy script [generate-env.ts](file:///E:/Project/repo/music-instrument-store/frontend/generate-env.ts) để trích xuất `UserPoolId`, `UserPoolClientId` và `ApiGatewayUrl` từ `cdk-outputs.json`, sau đó **merge (gộp)** thẳng vào file `frontend/.env.local` của bạn.
 
 > [!TIP]
-> Script gộp môi trường thông minh [generate-env.ts](file:///E:/Project/repo/music-instrument-store/frontend/generate-env.ts) sẽ **KHÔNG ghi đè** hay làm mất các biến cấu hình thủ công của bạn (như `OPENAI_API_KEY` hay các API Keys từ bên thứ ba). Nó chỉ cập nhật hoặc bổ sung các tài nguyên AWS vừa được Deploy.
+> Script gộp môi trường thông minh [generate-env.ts](file:///E:/Project/repo/music-instrument-store/frontend/generate-env.ts) sẽ **KHÔNG ghi đè** hay làm mất các biến cấu hình thủ công của bạn (như `STRIPE_SECRET_KEY` hay các API Keys từ bên thứ ba). Nó chỉ cập nhật hoặc bổ sung các tài nguyên AWS vừa được Deploy.
 
 ---
 
