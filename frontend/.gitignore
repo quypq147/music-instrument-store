@@ -44,6 +44,8 @@ next-env.d.ts
 tests
 screenshots
 test-results
+playwright-report
+blob-report
 
 #NPM Cache
 .npm-cache

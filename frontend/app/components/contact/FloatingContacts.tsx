@@ -19,7 +19,7 @@ export default function FloatingContacts() {
   if (isChatOpen) return null;
 
   return (
-    <div className="fixed bottom-25 right-7.5 flex flex-col gap-4 z-[9999]">
+    <div className="fixed bottom-25 right-7.5 flex flex-col gap-4 z-9999">
       {/* Phone */}
       <Link
         href="tel:0912191218"
@@ -29,7 +29,7 @@ export default function FloatingContacts() {
       </Link>
       {/* Zalo */}
       <Link
-        href="https://zalo.me/0767061830"
+        href="https://zalo.me/0912191218"
         target="_blank"
         rel="noopener noreferrer"
         className="w-15 h-15 bg-[#0068FF] rounded-full flex items-center justify-center text-white no-underline font-bold text-sm font-sans shadow-[0_10px_25px_rgba(0,104,255,0.3)] transition-transform hover:scale-105"
